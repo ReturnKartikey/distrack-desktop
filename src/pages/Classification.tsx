@@ -7,14 +7,26 @@ export default function Classification() {
   const { apps, updateAppCategory, scanApps, isElectron } = useAppContext();
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [localApps, setLocalApps] = useState<AppUsage[]>(apps);
+  const [scannedApps, setScannedApps] = useState<AppUsage[]>([]);
 
-  // Sync with context apps
-  useEffect(() => { setLocalApps(apps); }, [apps]);
+  // Merge tracked apps + scanned apps, deduplicating by id
+  const allApps = React.useMemo(() => {
+    const merged = new Map<string, AppUsage>();
+    for (const app of apps) {
+      merged.set(app.id, app);
+    }
+    for (const app of scannedApps) {
+      if (!merged.has(app.id)) {
+        merged.set(app.id, app);
+      }
+    }
+    return Array.from(merged.values()).sort((a, b) => b.timeSpentMinutes - a.timeSpentMinutes);
+  }, [apps, scannedApps]);
 
   const handleCategoryChange = (id: string, newCategory: AppCategory) => {
     updateAppCategory(id, newCategory);
-    setLocalApps(prev => prev.map(a => a.id === id ? { ...a, category: newCategory } : a));
+    // Also update in scanned apps if it exists there
+    setScannedApps(prev => prev.map(a => a.id === id ? { ...a, category: newCategory } : a));
     setOpenDropdownId(null);
   };
 
@@ -22,13 +34,9 @@ export default function Classification() {
     setIsScanning(true);
     try {
       const scanned = await scanApps();
-      const merged = [...localApps];
-      for (const app of scanned) {
-        if (!merged.find(a => a.id === app.id)) {
-          merged.push(app);
-        }
+      if (scanned.length > 0) {
+        setScannedApps(scanned);
       }
-      setLocalApps(merged);
     } catch (e) {
       console.error('Scan failed:', e);
     }
@@ -47,7 +55,7 @@ export default function Classification() {
         <button
           onClick={handleScan}
           disabled={isScanning}
-          className="px-6 py-3 border border-outline-variant bg-surface text-white text-[10px] uppercase tracking-widest font-bold hover:bg-surface-bright transition-colors flex items-center justify-center gap-2"
+          className="px-6 py-3 border border-outline-variant bg-surface text-white text-[10px] uppercase tracking-widest font-bold hover:bg-surface-bright transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
         >
           <span className={`material-symbols-outlined text-[16px] ${isScanning ? 'animate-spin' : ''}`}>sync</span>
           {isScanning ? 'Scanning System...' : 'Scan PC Apps'}
@@ -65,16 +73,16 @@ export default function Classification() {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant">
-              {localApps.length === 0 ? (
+              {allApps.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="p-12 text-center">
                     <span className="material-symbols-outlined text-4xl mb-3 block opacity-30">search</span>
                     <p className="text-xs text-on-surface-variant uppercase tracking-widest">
-                      {isElectron ? 'No apps tracked yet. Use your PC and they\'ll appear here.' : 'Click "Scan PC Apps" to detect running applications.'}
+                      {isElectron ? 'No apps tracked yet. Click "Scan PC Apps" or use your PC and they\'ll appear here.' : 'Click "Scan PC Apps" to detect running applications.'}
                     </p>
                   </td>
                 </tr>
-              ) : localApps.map((app) => (
+              ) : allApps.map((app) => (
                 <tr key={app.id} className="hover:bg-surface-bright transition-colors group">
                   <td className="p-6">
                     <div className="flex items-center gap-4">

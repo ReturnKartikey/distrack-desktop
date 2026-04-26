@@ -5,6 +5,11 @@ import type { FocusSession, AppSettings, DailyTotal } from '../types/electron';
 
 const isElectron = !!window.electronAPI;
 
+interface UserProfile {
+  name: string;
+  email: string;
+}
+
 interface AppContextType {
   apps: AppUsage[];
   focusScore: number;
@@ -26,6 +31,8 @@ interface AppContextType {
   setOnboarded: () => void;
   timeframe: 'daily' | 'weekly';
   setTimeframe: (t: 'daily' | 'weekly') => void;
+  userProfile: UserProfile;
+  setUserProfile: (p: UserProfile) => void;
 }
 
 const DEFAULT_SETTINGS: AppSettings = { theme: 'dark', notifications: true, launchOnStartup: false };
@@ -42,7 +49,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [dailyTotals, setDailyTotals] = useState<DailyTotal[]>([]);
   const [isOnboarded, setIsOnboardedState] = useState(true);
   const [timeframe, setTimeframe] = useState<'daily' | 'weekly'>('daily');
+  const [userProfile, setUserProfileState] = useState<UserProfile>(() => {
+    try {
+      const saved = localStorage.getItem('distrack_user');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return { name: '', email: '' };
+  });
   const cleanupRef = useRef<(() => void) | null>(null);
+
+  const setUserProfile = useCallback((p: UserProfile) => {
+    setUserProfileState(p);
+    try { localStorage.setItem('distrack_user', JSON.stringify(p)); } catch {}
+  }, []);
 
   // ── Initial data load ──
   useEffect(() => {
@@ -148,7 +167,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const scanApps = useCallback(async (): Promise<AppUsage[]> => {
     if (isElectron) {
-      return window.electronAPI!.scanRunningApps();
+      const scanned = await window.electronAPI!.scanRunningApps();
+      // Merge scanned apps into existing apps list
+      setApps(prev => {
+        const merged = [...prev];
+        for (const app of scanned) {
+          if (!merged.find(a => a.id === app.id)) {
+            merged.push(app);
+          }
+        }
+        return merged;
+      });
+      return scanned;
     }
     return [];
   }, []);
@@ -188,6 +218,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       clearData, isElectron, dailyTotals,
       isOnboarded, setOnboarded,
       timeframe, setTimeframe,
+      userProfile, setUserProfile,
     }}>
       {children}
     </AppContext.Provider>

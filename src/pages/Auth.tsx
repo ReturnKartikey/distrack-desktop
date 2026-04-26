@@ -1,12 +1,25 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAppContext } from '../context/AppContext';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const navigate = useNavigate();
+  const { setUserProfile } = useAppContext();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const displayName = isLogin
+      ? email.split('@')[0] // derive name from email on login
+      : name || email.split('@')[0];
+    setUserProfile({ name: displayName, email });
+    navigate('/');
+  };
+
+  const handleGoogleSignIn = () => {
+    setUserProfile({ name: 'User', email: 'user@gmail.com' });
     navigate('/');
   };
 
@@ -31,7 +44,7 @@ export default function Auth() {
 
         <button 
           type="button" 
-          onClick={() => navigate('/')}
+          onClick={handleGoogleSignIn}
           className="mb-6 bg-surface-bright text-white py-4 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-white hover:text-black border border-outline-variant transition-all w-full flex justify-center items-center gap-3"
         >
           <img src="https://www.google.com/favicon.ico" alt="Google" className="w-4 h-4 opacity-80" />
@@ -51,6 +64,8 @@ export default function Auth() {
               <input 
                 type="text" 
                 required 
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="bg-transparent border-b border-outline-variant py-2 outline-none focus:border-white transition-colors text-sm font-sans"
                 placeholder="John Doe"
               />
@@ -62,6 +77,8 @@ export default function Auth() {
             <input 
               type="email" 
               required 
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="bg-transparent border-b border-outline-variant py-2 outline-none focus:border-white transition-colors text-sm font-sans"
               placeholder="you@example.com"
             />

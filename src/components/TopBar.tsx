@@ -6,9 +6,10 @@ import { formatTime } from '../utils/logic';
 export default function TopBar() {
   const [profileOpen, setProfileOpen] = useState(false);
   const navigate = useNavigate();
-  const { apps } = useAppContext();
+  const { apps, userProfile, setUserProfile } = useAppContext();
   
   const totalScreenTime = apps.reduce((acc, app) => acc + app.timeSpentMinutes, 0);
+  const displayName = userProfile.name || 'User';
 
   return (
     <header className="sticky top-0 z-50 h-16 border-b border-outline-variant px-6 lg:px-10 flex items-center justify-between bg-background/80 backdrop-blur-md">
@@ -28,13 +29,19 @@ export default function TopBar() {
             className="w-10 h-10 flex items-center justify-center rounded-full border border-outline-variant bg-surface hover:bg-surface-bright cursor-pointer transition-colors"
             onClick={() => setProfileOpen(!profileOpen)}
           >
-            <span className="material-symbols-outlined text-white text-[20px]">person</span>
+            {userProfile.name ? (
+              <span className="text-white text-sm font-bold uppercase">{userProfile.name.charAt(0)}</span>
+            ) : (
+              <span className="material-symbols-outlined text-white text-[20px]">person</span>
+            )}
           </div>
           {profileOpen && (
             <div className="absolute right-0 top-14 w-48 bg-surface border border-outline-variant shadow-2xl flex flex-col z-50">
               <div className="px-4 py-3 border-b border-outline-variant">
-                <p className="text-sm text-white font-serif tracking-wide">Minimal User</p>
-                <p className="text-[10px] text-on-surface-variant font-mono mt-1">Free Plan</p>
+                <p className="text-sm text-white font-serif tracking-wide">{displayName}</p>
+                {userProfile.email && (
+                  <p className="text-[10px] text-on-surface-variant font-mono mt-1 truncate">{userProfile.email}</p>
+                )}
               </div>
               <button 
                 onClick={() => {
@@ -47,7 +54,11 @@ export default function TopBar() {
                 <span className="material-symbols-outlined text-[16px]">settings</span>
               </button>
               <button 
-                onClick={() => { setProfileOpen(false); navigate('/auth'); }}
+                onClick={() => { 
+                  setProfileOpen(false); 
+                  setUserProfile({ name: '', email: '' });
+                  navigate('/auth'); 
+                }}
                 className="text-left px-4 py-3 text-[10px] uppercase tracking-widest hover:bg-error/10 hover:text-error transition-colors text-on-surface flex items-center justify-between w-full"
               >
                 Logout

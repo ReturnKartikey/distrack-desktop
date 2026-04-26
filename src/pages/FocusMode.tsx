@@ -137,13 +137,16 @@ export default function FocusMode() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white text-black p-8 flex flex-col items-center justify-center min-h-[500px] relative overflow-hidden shadow-2xl">
+        {/* ── Timer Panel (White) ── */}
+        <div className="lg:col-span-2 bg-white text-black p-8 lg:p-10 flex flex-col items-center justify-between min-h-[520px] relative overflow-hidden shadow-2xl">
           <div className="absolute top-[-20%] right-[-10%] w-64 h-64 border border-black opacity-10 rounded-full"></div>
 
-          <div className="relative z-10 flex flex-col items-center w-full">
-            <h3 className="font-serif italic text-2xl mb-1">Focus Session</h3>
+          <div className="relative z-10 flex flex-col items-center w-full flex-1 justify-center">
+            {/* Title */}
+            <h3 className="font-serif italic text-2xl mb-6">Focus Session</h3>
 
-            <div className="flex gap-4 mb-4 mt-2">
+            {/* Mode Tabs */}
+            <div className="flex gap-4 mb-6">
               <button
                 onClick={() => { if (isFocusModeActive) return; setTimerMode('classic'); setTimeLeft(25 * 60); }}
                 className={`text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-1 border transition-colors ${timerMode === 'classic' ? 'border-black bg-black text-white' : 'border-transparent text-black/40 hover:text-black hover:border-black/20'}`}
@@ -154,37 +157,39 @@ export default function FocusMode() {
               >Pomodoro</button>
             </div>
 
-            <div className="flex flex-col items-center gap-2 mb-12">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">
-                  {timerMode === 'pomodoro' ? `Phase: ${pomodoroState.toUpperCase()}` : 'Mode:'}
-                </span>
-                {timerMode === 'classic' && !isFocusModeActive ? (
-                  <select
-                    value={selectedMode}
-                    onChange={(e) => setSelectedMode(e.target.value)}
-                    className="bg-transparent border-b border-black text-[10px] font-bold uppercase tracking-[0.2em] outline-none cursor-pointer text-center"
-                    style={{ MozAppearance: 'none', WebkitAppearance: 'none' } as React.CSSProperties}
-                  >
-                    <option value="Deep Silence">DEEP SILENCE</option>
-                    <option value="Light Focus">LIGHT FOCUS</option>
-                    <option value="Strict Lock">STRICT LOCK</option>
-                  </select>
-                ) : timerMode === 'classic' ? (
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em]">{selectedMode}</span>
-                ) : null}
-              </div>
-
-              {timerMode === 'classic' && (
-                <p className="text-[9px] uppercase tracking-widest opacity-50 max-w-[280px] text-center mt-2 leading-relaxed">
-                  {selectedMode === 'Deep Silence' && (isElectron ? "Uses your custom blocklist. Blocked apps will be killed if opened." : "Uses your custom blocklist. A balanced approach for everyday work.")}
-                  {selectedMode === 'Light Focus' && (isElectron ? "Kills only wasteful-categorized apps. Neutral apps stay open." : "Blocks only wasteful apps. Neutral apps remain accessible.")}
-                  {selectedMode === 'Strict Lock' && (isElectron ? "Kills ALL non-productive apps automatically. No exceptions." : "Blocks ALL non-productive apps automatically. No exceptions.")}
-                </p>
-              )}
+            {/* Mode Selector */}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">
+                {timerMode === 'pomodoro' ? `Phase: ${pomodoroState.toUpperCase()}` : 'Mode:'}
+              </span>
+              {timerMode === 'classic' && !isFocusModeActive ? (
+                <select
+                  value={selectedMode}
+                  onChange={(e) => setSelectedMode(e.target.value)}
+                  className="bg-transparent border-b border-black text-[10px] font-bold uppercase tracking-[0.2em] outline-none cursor-pointer text-center"
+                  style={{ MozAppearance: 'none', WebkitAppearance: 'none' } as React.CSSProperties}
+                >
+                  <option value="Deep Silence">DEEP SILENCE</option>
+                  <option value="Light Focus">LIGHT FOCUS</option>
+                  <option value="Strict Lock">STRICT LOCK</option>
+                </select>
+              ) : timerMode === 'classic' ? (
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em]">{selectedMode}</span>
+              ) : null}
             </div>
 
-            <div className="flex items-center justify-center mb-12 relative w-full h-[120px]">
+            {timerMode === 'classic' && (
+              <p className="text-[9px] uppercase tracking-widest opacity-40 max-w-[280px] text-center mb-8 leading-relaxed">
+                {selectedMode === 'Deep Silence' && (isElectron ? "Uses your custom blocklist. Blocked apps will be killed if opened." : "Uses your custom blocklist. A balanced approach for everyday work.")}
+                {selectedMode === 'Light Focus' && (isElectron ? "Kills only wasteful-categorized apps. Neutral apps stay open." : "Blocks only wasteful apps. Neutral apps remain accessible.")}
+                {selectedMode === 'Strict Lock' && (isElectron ? "Kills ALL non-productive apps automatically. No exceptions." : "Blocks ALL non-productive apps automatically. No exceptions.")}
+              </p>
+            )}
+
+            {timerMode === 'pomodoro' && <div className="mb-8"></div>}
+
+            {/* Timer Display */}
+            <div className="flex items-center justify-center mb-10 relative w-full">
               {!isFocusModeActive && (
                 <button onClick={() => adjustTime(-5)} className="absolute left-4 sm:left-12 p-3 opacity-30 hover:opacity-100 hover:text-black transition-opacity" title="Decrease Time">
                   <span className="material-symbols-outlined text-4xl">remove</span>
@@ -195,12 +200,12 @@ export default function FocusMode() {
                   onChange={(e) => setTempTimeInput(e.target.value)}
                   onBlur={handleTimeInputSubmit}
                   onKeyDown={handleTimeInputKeyDown}
-                  className="text-8xl font-mono tracking-tighter text-center bg-transparent border-b-4 border-black outline-none w-64"
+                  className="text-7xl lg:text-8xl font-mono tracking-tighter text-center bg-transparent border-b-4 border-black outline-none w-64"
                 />
               ) : (
                 <span
                   onClick={() => { if (isFocusModeActive) return; setTempTimeInput(formatTimer(timeLeft)); setIsEditingTime(true); }}
-                  className={`text-8xl font-mono tracking-tighter transition-opacity duration-300 ${!isFocusModeActive ? 'cursor-pointer hover:opacity-100' : ''} ${isFocusModeActive ? 'opacity-100' : 'opacity-80'}`}
+                  className={`text-7xl lg:text-8xl font-mono tracking-tighter transition-opacity duration-300 ${!isFocusModeActive ? 'cursor-pointer hover:opacity-100' : ''} ${isFocusModeActive ? 'opacity-100' : 'opacity-80'}`}
                 >
                   {formatTimer(timeLeft)}
                 </span>
@@ -212,23 +217,27 @@ export default function FocusMode() {
               )}
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center gap-6">
+            {/* Controls */}
+            <div className="flex items-center gap-6">
               <button onClick={handleStartStop}
-                className="border-2 border-black px-12 py-4 text-[10px] font-bold uppercase tracking-[0.3em] hover:bg-black hover:text-white transition-colors flex items-center justify-center gap-3 w-48"
+                className="border-2 border-black px-12 py-4 text-[10px] font-bold uppercase tracking-[0.3em] hover:bg-black hover:text-white transition-colors flex items-center justify-center gap-3 min-w-[180px]"
               >
                 {isFocusModeActive ? 'Pause' : 'Engage'}
               </button>
               <button onClick={resetTimer} className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 hover:opacity-100 transition-opacity">Reset</button>
             </div>
           </div>
-          <div className="absolute bottom-8 w-full px-8 text-center">
-            <p className="text-xs font-serif italic opacity-60 transition-opacity duration-1000 ease-in-out">
+
+          {/* Quote at bottom */}
+          <div className="w-full text-center mt-6">
+            <p className="text-xs font-serif italic opacity-50 transition-opacity duration-1000 ease-in-out">
               "{quotes[currentQuoteIndex]}"
             </p>
           </div>
         </div>
 
-        <div className="col-span-1 glass-card p-6 flex flex-col h-[500px]">
+        {/* ── Blocklist Panel (Dark) ── */}
+        <div className="col-span-1 glass-card p-6 flex flex-col h-[520px]">
           <div className="flex justify-between items-center mb-6">
               <h3 className="font-serif text-xl">Blocklist</h3>
               <span className="text-[10px] border border-outline px-2 py-0.5 text-on-surface-variant uppercase">Restricted</span>

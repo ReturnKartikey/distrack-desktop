@@ -136,7 +136,7 @@ export class AppTracker {
         id: key,
         name: d.processName,
         windowTitle: d.windowTitle,
-        timeSpentMinutes: Math.round(d.totalSeconds / 60),
+        timeSpentMinutes: Math.ceil(d.totalSeconds / 60),
         category: this.getCategory(key),
         type: 'application',
         icon: ICON_MAP[key] || 'apps',

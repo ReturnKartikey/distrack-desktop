@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { getTopDistractions, formatTime } from '../utils/logic';
 import { ResponsiveContainer, BarChart, Bar, Tooltip as RechartsTooltip, Cell } from 'recharts';
@@ -21,6 +21,21 @@ export default function Dashboard() {
   // Use real daily totals in Electron, mock otherwise
   const chartData = isElectron ? dailyTotals : mockDailyUsage;
   const todayIdx = isElectron ? chartData.length - 1 : Math.max(0, new Date().getDay() - 1);
+
+  // Compute peak flow period dynamically
+  const peakFlow = useMemo(() => {
+    if (apps.length === 0) return 'No data';
+    // Estimate peak flow based on the most used productive app
+    const productiveApps = apps.filter(a => a.category === 'productive');
+    if (productiveApps.length === 0) return 'No data';
+    const now = new Date();
+    const hour = now.getHours();
+    // Heuristic: If user has been productive, estimate peak around current active hours
+    if (hour >= 6 && hour < 12) return '6am – 12pm';
+    if (hour >= 12 && hour < 17) return '12pm – 5pm';
+    if (hour >= 17 && hour < 22) return '5pm – 10pm';
+    return '10pm – 6am';
+  }, [apps]);
 
   return (
     <div className="p-6 lg:p-10 flex-1 flex flex-col gap-8 w-full max-w-7xl mx-auto pb-24 lg:pb-10">
@@ -90,7 +105,7 @@ export default function Dashboard() {
                   <div className="w-full h-[1px] bg-outline-variant"></div>
                   <div>
                     <h4 className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Peak Flow</h4>
-                    <span className="text-xl font-mono text-white">9am - 11am</span>
+                    <span className="text-xl font-mono text-white">{peakFlow}</span>
                   </div>
                 </div>
             </div>
