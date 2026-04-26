@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { initialApps, AppUsage, AppCategory } from '../data/mockData';
+import { AppUsage, AppCategory } from '../data/mockData';
 import { calculateFocusScore } from '../utils/logic';
 import type { FocusSession, AppSettings, DailyTotal } from '../types/electron';
 
@@ -40,7 +40,8 @@ const DEFAULT_SETTINGS: AppSettings = { theme: 'dark', notifications: true, laun
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [apps, setApps] = useState<AppUsage[]>(isElectron ? [] : initialApps);
+  // Start with empty — real data will stream in from the tracker
+  const [apps, setApps] = useState<AppUsage[]>([]);
   const [focusScore, setFocusScore] = useState(0);
   const [isFocusModeActive, setIsFocusModeActive] = useState(false);
   const [blocklist, setBlocklist] = useState<string[]>([]);
@@ -66,7 +67,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ── Initial data load ──
   useEffect(() => {
     if (!isElectron) {
-      setFocusScore(calculateFocusScore(initialApps));
+      // In browser mode, do an initial scan to show something immediately
+      // (won't actually work without Electron, but keeps the interface consistent)
       return;
     }
 
@@ -82,24 +84,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       api.isOnboarded(),
       api.getFocusActive(),
     ]).then(([trackedApps, bl, sessions, sett, totals, onboarded, focusActive]) => {
-      if (trackedApps.length > 0) setApps(trackedApps);
+      if (trackedApps.length > 0) {
+        setApps(trackedApps);
+        setFocusScore(calculateFocusScore(trackedApps));
+      }
       setBlocklist(bl);
       setFocusSessions(sessions);
       setSettings(sett);
       setDailyTotals(totals);
       setIsOnboardedState(onboarded);
       setIsFocusModeActive(focusActive);
-      if (trackedApps.length > 0) setFocusScore(calculateFocusScore(trackedApps));
     }).catch(console.error);
 
-    // Listen for live tracking updates
+    // Listen for live tracking updates from the tracker
     const unsub = api.onTrackingUpdate((data) => {
       setApps(data.apps);
       setFocusScore(calculateFocusScore(data.apps));
     });
     cleanupRef.current = unsub;
 
-    return () => { if (cleanupRef.current) cleanupRef.current(); };
+    // Also poll for daily totals every 30 seconds to keep the chart fresh
+    const totalsTimer = setInterval(() => {
+      api.getDailyTotals().then(setDailyTotals);
+    }, 30000);
+
+    return () => {
+      if (cleanupRef.current) cleanupRef.current();
+      clearInterval(totalsTimer);
+    };
   }, []);
 
   // Refresh data when timeframe changes
@@ -114,9 +126,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     window.electronAPI!.getDailyTotals().then(setDailyTotals);
   }, [timeframe]);
 
-  // ── Non-electron: recalculate score when apps change ──
+  // ── Recalculate score when apps change ──
   useEffect(() => {
-    if (!isElectron) setFocusScore(calculateFocusScore(apps));
+    setFocusScore(calculateFocusScore(apps));
   }, [apps]);
 
   // ── Handlers ──

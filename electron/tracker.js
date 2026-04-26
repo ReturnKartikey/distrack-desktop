@@ -1,4 +1,4 @@
-import { execFile } from 'child_process';
+import { execFile, exec } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -13,10 +13,12 @@ const DEFAULT_CATEGORIES = {
   onenote: 'productive', notion: 'productive', obsidian: 'productive', terminal: 'productive',
   windowsterminal: 'productive', powershell: 'productive', cmd: 'productive',
   postman: 'productive', gitkraken: 'productive', sourcetree: 'productive',
+  androidstudio64: 'productive', sublime_text: 'productive', atom: 'productive',
 
   chrome: 'neutral', firefox: 'neutral', msedge: 'neutral', brave: 'neutral',
   opera: 'neutral', explorer: 'neutral', spotify: 'neutral', vlc: 'neutral',
   notepad: 'neutral', 'notepad++': 'neutral', calc: 'neutral',
+  mspaint: 'neutral', photos: 'neutral', snippingtool: 'neutral',
 
   discord: 'wasteful', telegram: 'wasteful', whatsapp: 'wasteful',
   instagram: 'wasteful', twitter: 'wasteful',
@@ -52,6 +54,7 @@ export class AppTracker {
     this.pollTimer = null;
     this.lastPollTime = null;
     this.isTracking = false;
+    this.hasInitialScan = false;
   }
 
   start() {
@@ -59,9 +62,75 @@ export class AppTracker {
     this.isTracking = true;
     this.lastPollTime = Date.now();
     console.log('[Tracker] Started');
-    // Poll every 5 seconds
-    this.poll(); // first poll immediately
-    this.pollTimer = setInterval(() => this.poll(), 5000);
+
+    // Do an initial scan of all running apps to immediately populate the UI
+    this.initialScan();
+
+    // First poll immediately, then every 3 seconds
+    this.poll();
+    this.pollTimer = setInterval(() => this.poll(), 3000);
+  }
+
+  /** Scan ALL running processes with visible windows and seed them into today's usage data */
+  initialScan() {
+    const dateKey = new Date().toISOString().split('T')[0];
+    const existing = this.store.get(`usageData.${dateKey}`, {});
+
+    // If we already have data for today, skip the initial scan
+    if (Object.keys(existing).length > 3) {
+      this.hasInitialScan = true;
+      return;
+    }
+
+    exec(
+      'powershell -NoProfile -Command "Get-Process | Where-Object {$_.MainWindowTitle -ne \'\'} | Select-Object ProcessName, MainWindowTitle, Id | ConvertTo-Json"',
+      { windowsHide: true, timeout: 8000 },
+      (err, stdout) => {
+        if (err || !stdout.trim()) return;
+        try {
+          let data = JSON.parse(stdout.trim());
+          if (!Array.isArray(data)) data = [data];
+
+          const usageData = this.store.get(`usageData.${dateKey}`, {});
+          const now = Date.now();
+
+          for (const proc of data) {
+            if (!proc.ProcessName) continue;
+            const appKey = proc.ProcessName.toLowerCase();
+
+            // Skip ourselves and system processes
+            if (['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost'].includes(appKey)) continue;
+
+            if (!usageData[appKey]) {
+              usageData[appKey] = {
+                processName: proc.ProcessName,
+                windowTitle: proc.MainWindowTitle || proc.ProcessName,
+                totalSeconds: 1, // Seed with 1 second so it shows up
+                category: this.getCategory(appKey),
+                lastActive: now,
+              };
+            }
+          }
+
+          this.store.set(`usageData.${dateKey}`, usageData);
+          this.hasInitialScan = true;
+
+          // Push update to renderer immediately
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            try {
+              this.mainWindow.webContents.send('tracking-update', {
+                dateKey,
+                apps: this.formatApps(usageData),
+              });
+            } catch (e) { /* window may be closing */ }
+          }
+
+          console.log(`[Tracker] Initial scan: found ${Object.keys(usageData).length} apps`);
+        } catch (e) {
+          console.error('[Tracker] Initial scan parse error:', e.message);
+        }
+      }
+    );
   }
 
   poll() {
@@ -84,7 +153,7 @@ export class AppTracker {
 
   recordActivity(processName, windowTitle) {
     const now = Date.now();
-    const elapsed = this.lastPollTime ? Math.round((now - this.lastPollTime) / 1000) : 5;
+    const elapsed = this.lastPollTime ? Math.round((now - this.lastPollTime) / 1000) : 3;
     this.lastPollTime = now;
 
     // Cap at 30s to avoid huge jumps from sleep/suspend

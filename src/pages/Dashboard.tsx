@@ -2,35 +2,35 @@ import React, { useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { getTopDistractions, formatTime } from '../utils/logic';
 import { ResponsiveContainer, BarChart, Bar, Tooltip as RechartsTooltip, Cell } from 'recharts';
-import { mockDailyUsage } from '../data/mockData';
 
 export default function Dashboard() {
-  const { apps, focusScore, isElectron, dailyTotals, timeframe, setTimeframe } = useAppContext();
+  const { apps, focusScore, dailyTotals, timeframe, setTimeframe } = useAppContext();
 
   const screenTimeMinutes = apps.reduce((acc, app) => acc + app.timeSpentMinutes, 0);
   const h = Math.floor(screenTimeMinutes / 60);
   const m = Math.floor(screenTimeMinutes % 60);
-  const screenTime = `${h}h ${m}m`;
+  const screenTime = screenTimeMinutes > 0 ? `${h}h ${m}m` : '0h 0m';
 
-  const topApps = apps
+  const topApps = [...apps]
     .sort((a, b) => b.timeSpentMinutes - a.timeSpentMinutes)
     .slice(0, 5);
 
-  const topDistractions = getTopDistractions(apps);
-
-  // Use real daily totals in Electron, mock otherwise
-  const chartData = isElectron ? dailyTotals : mockDailyUsage;
-  const todayIdx = isElectron ? chartData.length - 1 : Math.max(0, new Date().getDay() - 1);
+  // Use real daily totals — they come from the tracker
+  const chartData = dailyTotals.length > 0 ? dailyTotals : [
+    { day: 'S', label: 'S', value: 0 }, { day: 'M', label: 'M', value: 0 },
+    { day: 'T', label: 'T', value: 0 }, { day: 'W', label: 'W', value: 0 },
+    { day: 'T', label: 'T', value: 0 }, { day: 'F', label: 'F', value: 0 },
+    { day: 'S', label: 'S', value: 0 },
+  ];
+  const todayIdx = chartData.length - 1;
 
   // Compute peak flow period dynamically
   const peakFlow = useMemo(() => {
-    if (apps.length === 0) return 'No data';
-    // Estimate peak flow based on the most used productive app
+    if (apps.length === 0) return '—';
     const productiveApps = apps.filter(a => a.category === 'productive');
-    if (productiveApps.length === 0) return 'No data';
+    if (productiveApps.length === 0) return '—';
     const now = new Date();
     const hour = now.getHours();
-    // Heuristic: If user has been productive, estimate peak around current active hours
     if (hour >= 6 && hour < 12) return '6am – 12pm';
     if (hour >= 12 && hour < 17) return '12pm – 5pm';
     if (hour >= 17 && hour < 22) return '5pm – 10pm';
@@ -69,7 +69,7 @@ export default function Dashboard() {
               <div className="flex justify-between items-start">
                 <h3 className="font-serif text-xl">Focus Score</h3>
                 <span className="text-[10px] bg-white text-black px-2 py-0.5 font-bold uppercase tracking-tighter">
-                   {focusScore > 80 ? 'Excellent' : focusScore > 60 ? 'Good' : focusScore > 0 ? 'Needs Work' : 'No Data'}
+                   {focusScore > 80 ? 'Excellent' : focusScore > 60 ? 'Good' : focusScore > 0 ? 'Needs Work' : 'Warming Up'}
                 </span>
               </div>
               <div className="flex flex-col mt-4">
@@ -85,7 +85,7 @@ export default function Dashboard() {
                 </div>
                 <p className="text-xs text-on-surface-variant mt-4 leading-relaxed">
                   {apps.length === 0
-                    ? 'Start using your PC — Distrack is tracking in the background.'
+                    ? 'Distrack is scanning your PC. Data will appear in a few seconds...'
                     : focusScore > 70
                     ? 'Great job maintaining deep work blocks. Keep it up!'
                     : 'Try reducing time on distracting apps to boost your score.'}
@@ -104,8 +104,8 @@ export default function Dashboard() {
                   </div>
                   <div className="w-full h-[1px] bg-outline-variant"></div>
                   <div>
-                    <h4 className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Peak Flow</h4>
-                    <span className="text-xl font-mono text-white">{peakFlow}</span>
+                    <h4 className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">Apps Tracked</h4>
+                    <span className="text-xl font-mono text-white">{apps.length} apps</span>
                   </div>
                 </div>
             </div>
@@ -114,7 +114,7 @@ export default function Dashboard() {
           <div className="glass-card p-6 flex-1 flex flex-col gap-4 min-h-[300px]">
               <div className="flex justify-between items-center mb-4">
                   <h3 className="font-serif text-xl">Usage Trends</h3>
-                  <span className="text-[10px] border border-outline px-2 py-0.5 text-on-surface-variant uppercase">History</span>
+                  <span className="text-[10px] border border-outline px-2 py-0.5 text-on-surface-variant uppercase">7-Day History</span>
               </div>
               <div className="h-40 w-full mb-2">
                 <ResponsiveContainer width="100%" height="100%">
@@ -122,7 +122,7 @@ export default function Dashboard() {
                         <RechartsTooltip
                           cursor={{fill: '#262626'}}
                           contentStyle={{backgroundColor: '#141414', border: '1px solid #262626', borderRadius: '0px', color: '#fff', fontFamily: 'monospace', fontSize: '12px'}}
-                          formatter={(value: number) => [`${value} hours`, 'Screen Time']}
+                          formatter={(value: number) => [`${value}h`, 'Screen Time']}
                           labelStyle={{color: '#a3a3a3', marginBottom: '4px'}}
                         />
                         <Bar dataKey="value" radius={[0, 0, 0, 0]}>
@@ -145,7 +145,7 @@ export default function Dashboard() {
           <div className="glass-card p-6 h-auto min-h-[260px]">
               <div className="flex justify-between items-center mb-6">
                   <h3 className="font-serif text-xl">Top Apps</h3>
-                  <span className="text-[10px] border border-outline px-2 py-0.5 text-on-surface-variant uppercase">Live View</span>
+                  <span className="text-[10px] border border-outline px-2 py-0.5 text-on-surface-variant uppercase">Live</span>
               </div>
               <div className="flex flex-col gap-4">
                   {topApps.length > 0 ? topApps.map((app, index) => (
@@ -162,7 +162,7 @@ export default function Dashboard() {
                   )) : (
                     <div className="text-center py-8 opacity-50">
                       <span className="material-symbols-outlined text-3xl mb-2 block">monitoring</span>
-                      <p className="text-xs font-mono text-on-surface-variant">Tracking will appear here.</p>
+                      <p className="text-xs font-mono text-on-surface-variant">Scanning your apps...</p>
                     </div>
                   )}
               </div>
@@ -177,11 +177,13 @@ export default function Dashboard() {
               <div className="z-10 flex flex-col items-center py-6">
                   <div className="relative w-28 h-28 border-[12px] border-black/10 rounded-full flex items-center justify-center">
                     <div className="absolute inset-0 border-[12px] border-black rounded-full border-t-transparent border-r-transparent -rotate-[15deg]"></div>
-                    <span className="block text-2xl font-mono text-black font-bold">{Math.round(focusScore * 0.82)}%</span>
+                    <span className="block text-2xl font-mono text-black font-bold">{apps.length > 0 ? `${Math.round(focusScore * 0.82)}%` : '—'}</span>
                   </div>
               </div>
               <div className="z-10 text-[10px] font-serif italic text-center opacity-60">
-                 "Simplicity is the ultimate sophistication."
+                 {apps.length > 0
+                   ? peakFlow !== '—' ? `Peak productive hours: ${peakFlow}` : 'Keep working — insights will appear soon.'
+                   : 'Use your PC and Distrack learns your habits.'}
               </div>
           </div>
         </section>
