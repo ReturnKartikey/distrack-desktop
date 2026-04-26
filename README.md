@@ -1,7 +1,7 @@
 
 ## Distrack
 
-Distrack is a premium Windows desktop application designed for digital mindfulness. It helps you stay productive by tracking your real-time activity and providing powerful tools to manage your digital focus.
+Distrack is a Minimalistic Windows desktop application designed for digital mindfulness. It helps you stay productive by tracking your real-time activity and providing powerful tools to manage your digital focus.
 
 <img width="1919" height="909" alt="image" src="https://github.com/user-attachments/assets/b2df3f88-3703-4728-b6c8-23c9e68585da" />
 
