@@ -64,4 +64,4 @@ npx electron-builder --win
 Distrack is designed with privacy in mind. Tracking data is stored locally in your `%APPDATA%` directory and never leaves your machine unless you explicitly configure cloud sync.
 
 ---
-Built with focus by Distrack.
+Built with focus by Kartikey👀.
