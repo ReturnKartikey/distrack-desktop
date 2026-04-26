@@ -1,8 +1,10 @@
-# Distrack
+
+## Distrack
 
 Distrack is a premium Windows desktop application designed for digital mindfulness. It helps you stay productive by tracking your real-time activity and providing powerful tools to manage your digital focus.
 
-![Dashboard Screenshot](screenshots/dashboard.png)
+<img width="1919" height="909" alt="image" src="https://github.com/user-attachments/assets/b2df3f88-3703-4728-b6c8-23c9e68585da" />
+
 
 ## Key Features
 
@@ -11,16 +13,21 @@ Distrack is a premium Windows desktop application designed for digital mindfulne
 - **Modern Dashboard**: A glassmorphic, dark-themed interface designed for clear visualization of your focus scores and usage trends.
 - **Data Persistence**: All your tracking data is stored securely and locally on your machine.
 - **Production-Ready**: Includes a fully configured build pipeline for generating Windows installers (.exe).
-
+- **Focus Score**: Identify your "Peak Flow" periods to optimize your workday.
 ## The Interface
 
 ### Login & Onboarding
-Distrack features a professional authentication flow, allowing you to sync your data securely.
 
-![Login Screenshot](screenshots/login.png)
 
-### Focus & Insights
-Track your "Focus Score" and identify your "Peak Flow" periods to optimize your workday.
+<img width="1919" height="909" alt="image" src="https://github.com/user-attachments/assets/05c4982c-5ec0-4a84-a5ff-c9b0db02bccd" />
+
+### App Classification
+
+<img width="1919" height="909" alt="image" src="https://github.com/user-attachments/assets/8cfe99b8-4340-4114-9c1e-a8fe3cd299f8" />
+
+### Deep Insights
+
+<img width="1919" height="909" alt="image" src="https://github.com/user-attachments/assets/cba320b9-24e1-4b0c-82c4-4a1d68788bd9" />
 
 ## Tech Stack
 
