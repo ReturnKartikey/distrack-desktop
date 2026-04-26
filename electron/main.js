@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage } from 'electron';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { Store } from './store.js';
 import { AppTracker } from './tracker.js';
@@ -119,29 +119,63 @@ function setupIPC() {
   // -- Scan running apps --
   ipcMain.handle('scan-running-apps', () => {
     return new Promise((resolve) => {
-      exec('powershell -NoProfile -Command "Get-Process | Where-Object {$_.MainWindowTitle -ne \'\'} | Select-Object ProcessName, MainWindowTitle, Id | ConvertTo-Json"',
-        { windowsHide: true, timeout: 5000 },
-        (err, stdout) => {
-          if (err) return resolve([]);
-          try {
-            let data = JSON.parse(stdout.trim());
-            if (!Array.isArray(data)) data = [data];
-            const categories = store.get('appCategories', {});
-            const result = data
-              .filter(p => p.ProcessName && p.ProcessName.toLowerCase() !== 'electron')
-              .map(p => ({
-                id: p.ProcessName.toLowerCase(),
-                name: p.ProcessName,
-                windowTitle: p.MainWindowTitle,
-                timeSpentMinutes: 0,
-                category: categories[p.ProcessName.toLowerCase()] || 'neutral',
-                type: 'application',
-                icon: 'apps',
-              }));
-            resolve(result);
-          } catch { resolve([]); }
+      const psScript = `Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object ProcessName, MainWindowTitle, Id | ConvertTo-Json`;
+      execFile('powershell.exe', [
+        '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', psScript
+      ], { windowsHide: true, timeout: 10000 }, (err, stdout, stderr) => {
+        if (err) {
+          console.error('[Scan] PowerShell error:', err.message);
+          console.error('[Scan] stderr:', stderr);
+          return resolve([]);
         }
-      );
+        if (!stdout || !stdout.trim()) {
+          console.log('[Scan] No output from PowerShell');
+          return resolve([]);
+        }
+        try {
+          let data = JSON.parse(stdout.trim());
+          if (!Array.isArray(data)) data = [data];
+          const categories = store.get('appCategories', {});
+          const ICON_MAP = {
+            code: 'code', devenv: 'code', idea64: 'code', webstorm64: 'code',
+            chrome: 'public', firefox: 'public', msedge: 'public', brave: 'public',
+            discord: 'chat', telegram: 'chat', whatsapp: 'chat', slack: 'forum',
+            spotify: 'music_note', vlc: 'play_circle', figma: 'draw', explorer: 'folder',
+            outlook: 'mail', winword: 'description', excel: 'table', powerpnt: 'slideshow',
+            notion: 'edit_note', obsidian: 'edit_note', notepad: 'edit_note',
+            windowsterminal: 'terminal', powershell: 'terminal', cmd: 'terminal',
+          };
+          const DEFAULT_CATS = {
+            code: 'productive', devenv: 'productive', figma: 'productive', slack: 'productive',
+            teams: 'productive', outlook: 'productive', winword: 'productive', excel: 'productive',
+            notion: 'productive', obsidian: 'productive', windowsterminal: 'productive',
+            chrome: 'neutral', firefox: 'neutral', msedge: 'neutral', brave: 'neutral',
+            explorer: 'neutral', spotify: 'neutral', notepad: 'neutral',
+            discord: 'wasteful', telegram: 'wasteful', whatsapp: 'wasteful',
+          };
+          const result = data
+            .filter(p => p && p.ProcessName && !['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost'].includes(p.ProcessName.toLowerCase()))
+            .map(p => {
+              const key = p.ProcessName.toLowerCase();
+              return {
+                id: key,
+                name: p.ProcessName,
+                windowTitle: p.MainWindowTitle || '',
+                timeSpentMinutes: 0,
+                category: categories[key] || DEFAULT_CATS[key] || 'neutral',
+                type: 'application',
+                icon: ICON_MAP[key] || 'apps',
+              };
+            });
+          // Deduplicate by id
+          const unique = [...new Map(result.map(r => [r.id, r])).values()];
+          console.log(`[Scan] Found ${unique.length} apps`);
+          resolve(unique);
+        } catch (e) {
+          console.error('[Scan] JSON parse error:', e.message, 'raw:', stdout.substring(0, 200));
+          resolve([]);
+        }
+      });
     });
   });
 
