@@ -18,10 +18,10 @@ export default function FocusMode() {
   const [timerMode, setTimerMode] = useState<'classic' | 'pomodoro'>('classic');
   const [pomodoroState, setPomodoroState] = useState<'work' | 'break'>('work');
 
-  const defaultWorkTime = 25 * 60;
-  const defaultBreakTime = 5 * 60;
+  const [workTime, setWorkTime] = useState(25 * 60);
+  const [breakTime, setBreakTime] = useState(5 * 60);
 
-  const [timeLeft, setTimeLeft] = useState(defaultWorkTime);
+  const [timeLeft, setTimeLeft] = useState(workTime);
   const [customInput, setCustomInput] = useState('');
   const [customItems, setCustomItems] = useState<{id: string, name: string}[]>([]);
   const [isEditingTime, setIsEditingTime] = useState(false);
@@ -56,12 +56,12 @@ export default function FocusMode() {
       if (timerMode === 'pomodoro') {
         if (pomodoroState === 'work') {
           setPomodoroState('break');
-          setTimeLeft(defaultBreakTime);
-          setInitialDuration(defaultBreakTime);
+          setTimeLeft(breakTime);
+          setInitialDuration(breakTime);
         } else {
           setPomodoroState('work');
-          setTimeLeft(defaultWorkTime);
-          setInitialDuration(defaultWorkTime);
+          setTimeLeft(workTime);
+          setInitialDuration(workTime);
           stopFocusSession();
         }
       } else {
@@ -85,7 +85,7 @@ export default function FocusMode() {
     if (isFocusModeActive) stopFocusSession();
     if (timerMode === 'pomodoro') {
       setPomodoroState('work');
-      setTimeLeft(defaultWorkTime);
+      setTimeLeft(workTime);
     } else {
       setTimeLeft(25 * 60);
     }
@@ -108,7 +108,14 @@ export default function FocusMode() {
     let mins = 0, secs = 0;
     if (parts.length === 2) { mins = parseInt(parts[0]) || 0; secs = parseInt(parts[1]) || 0; }
     else if (parts.length === 1) { mins = parseInt(parts[0]) || 0; }
-    if (mins >= 0 && secs >= 0 && secs < 60) setTimeLeft(mins * 60 + secs);
+    if (mins >= 0 && secs >= 0 && secs < 60) {
+      const newTime = mins * 60 + secs;
+      setTimeLeft(newTime);
+      if (timerMode === 'pomodoro') {
+        if (pomodoroState === 'work') setWorkTime(newTime);
+        else setBreakTime(newTime);
+      }
+    }
   };
 
   const handleTimeInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -152,7 +159,7 @@ export default function FocusMode() {
                 className={`text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-1 border transition-colors ${timerMode === 'classic' ? 'border-black bg-black text-white' : 'border-transparent text-black/40 hover:text-black hover:border-black/20'}`}
               >Classic</button>
               <button
-                onClick={() => { if (isFocusModeActive) return; setTimerMode('pomodoro'); setPomodoroState('work'); setTimeLeft(defaultWorkTime); }}
+                onClick={() => { if (isFocusModeActive) return; setTimerMode('pomodoro'); setPomodoroState('work'); setTimeLeft(workTime); }}
                 className={`text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-1 border transition-colors ${timerMode === 'pomodoro' ? 'border-black bg-black text-white' : 'border-transparent text-black/40 hover:text-black hover:border-black/20'}`}
               >Pomodoro</button>
             </div>
@@ -186,7 +193,27 @@ export default function FocusMode() {
               </p>
             )}
 
-            {timerMode === 'pomodoro' && <div className="mb-8"></div>}
+            {timerMode === 'pomodoro' && (
+              <div className="flex items-center gap-8 mb-8">
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-2">Work</span>
+                  <div className="flex items-center gap-2">
+                    {!isFocusModeActive && <button onClick={() => { setWorkTime(prev => Math.max(60, prev - 60 * 5)); if (pomodoroState === 'work') setTimeLeft(prev => Math.max(60, prev - 60 * 5)); }} className="opacity-30 hover:opacity-100"><span className="material-symbols-outlined text-[14px]">remove</span></button>}
+                    <span className="font-mono text-sm">{formatTimer(workTime)}</span>
+                    {!isFocusModeActive && <button onClick={() => { setWorkTime(prev => prev + 60 * 5); if (pomodoroState === 'work') setTimeLeft(prev => prev + 60 * 5); }} className="opacity-30 hover:opacity-100"><span className="material-symbols-outlined text-[14px]">add</span></button>}
+                  </div>
+                </div>
+                <div className="w-px h-8 bg-black/10"></div>
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-2">Break</span>
+                  <div className="flex items-center gap-2">
+                    {!isFocusModeActive && <button onClick={() => { setBreakTime(prev => Math.max(60, prev - 60)); if (pomodoroState === 'break') setTimeLeft(prev => Math.max(60, prev - 60)); }} className="opacity-30 hover:opacity-100"><span className="material-symbols-outlined text-[14px]">remove</span></button>}
+                    <span className="font-mono text-sm">{formatTimer(breakTime)}</span>
+                    {!isFocusModeActive && <button onClick={() => { setBreakTime(prev => prev + 60); if (pomodoroState === 'break') setTimeLeft(prev => prev + 60); }} className="opacity-30 hover:opacity-100"><span className="material-symbols-outlined text-[14px]">add</span></button>}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Timer Display */}
             <div className="flex items-center justify-center mb-10 relative w-full">

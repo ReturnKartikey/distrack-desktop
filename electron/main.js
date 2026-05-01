@@ -35,7 +35,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 650,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -119,7 +119,7 @@ function setupIPC() {
   // -- Scan running apps --
   ipcMain.handle('scan-running-apps', () => {
     return new Promise((resolve) => {
-      const psScript = `Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object ProcessName, MainWindowTitle, Id | ConvertTo-Json`;
+      const psScript = `Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object ProcessName, MainWindowTitle, Id | ConvertTo-Json -Compress`;
       execFile('powershell.exe', [
         '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', psScript
       ], { windowsHide: true, timeout: 10000 }, (err, stdout, stderr) => {
@@ -154,7 +154,7 @@ function setupIPC() {
             discord: 'wasteful', telegram: 'wasteful', whatsapp: 'wasteful',
           };
           const result = data
-            .filter(p => p && p.ProcessName && !['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost'].includes(p.ProcessName.toLowerCase()))
+            .filter(p => p && p.ProcessName && !['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker'].includes(p.ProcessName.toLowerCase()))
             .map(p => {
               const key = p.ProcessName.toLowerCase();
               return {

@@ -40,18 +40,22 @@ Add-Type -MemberDefinition '
 [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 ' -Name 'U' -Namespace 'W' -ErrorAction SilentlyContinue
-$h=[W.U]::GetForegroundWindow()
-$p=[uint32]0
-[W.U]::GetWindowThreadProcessId($h,[ref]$p)|Out-Null
-$pr=Get-Process -Id $p -ErrorAction SilentlyContinue
-if($pr){@{n=$pr.ProcessName;t=$pr.MainWindowTitle;p=[int]$p}|ConvertTo-Json -Compress}
+
+while($true) {
+  $h=[W.U]::GetForegroundWindow()
+  $p=[uint32]0
+  [W.U]::GetWindowThreadProcessId($h,[ref]$p)|Out-Null
+  $pr=Get-Process -Id $p -ErrorAction SilentlyContinue
+  if($pr){@{n=$pr.ProcessName;t=$pr.MainWindowTitle;p=[int]$p}|ConvertTo-Json -Compress}
+  Start-Sleep -Seconds 3
+}
 `;
 
 export class AppTracker {
   constructor(store, mainWindow) {
     this.store = store;
     this.mainWindow = mainWindow;
-    this.pollTimer = null;
+    this.psProcess = null;
     this.lastPollTime = null;
     this.isTracking = false;
     this.hasInitialScan = false;
@@ -66,9 +70,28 @@ export class AppTracker {
     // Do an initial scan of all running apps to immediately populate the UI
     this.initialScan();
 
-    // First poll immediately, then every 3 seconds
-    this.poll();
-    this.pollTimer = setInterval(() => this.poll(), 3000);
+    // Start persistent powershell process
+    import('child_process').then(({ spawn }) => {
+      this.psProcess = spawn('powershell.exe', [
+        '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', PS_SCRIPT
+      ], { windowsHide: true });
+
+      this.psProcess.stdout.on('data', (data) => {
+        const output = data.toString().trim();
+        const lines = output.split('\\n');
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const info = JSON.parse(line.trim());
+            if (info && info.n) {
+              this.recordActivity(info.n, info.t);
+            }
+          } catch (e) {
+            // ignore parse errors
+          }
+        }
+      });
+    });
   }
 
   /** Scan ALL running processes with visible windows and seed them into today's usage data */
@@ -83,7 +106,7 @@ export class AppTracker {
     }
 
     exec(
-      'powershell -NoProfile -Command "Get-Process | Where-Object {$_.MainWindowTitle -ne \'\'} | Select-Object ProcessName, MainWindowTitle, Id | ConvertTo-Json"',
+      'powershell -NoProfile -Command "Get-Process | Where-Object {$_.MainWindowTitle -ne \'\'} | Select-Object ProcessName, MainWindowTitle, Id | ConvertTo-Json -Compress"',
       { windowsHide: true, timeout: 8000 },
       (err, stdout) => {
         if (err || !stdout.trim()) return;
@@ -99,7 +122,7 @@ export class AppTracker {
             const appKey = proc.ProcessName.toLowerCase();
 
             // Skip ourselves and system processes
-            if (['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost'].includes(appKey)) continue;
+            if (['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker'].includes(appKey)) continue;
 
             if (!usageData[appKey]) {
               usageData[appKey] = {
@@ -133,23 +156,7 @@ export class AppTracker {
     );
   }
 
-  poll() {
-    if (!this.isTracking) return;
-
-    execFile('powershell', [
-      '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', PS_SCRIPT
-    ], { timeout: 4000, windowsHide: true }, (err, stdout) => {
-      if (err || !stdout.trim()) return;
-      try {
-        const info = JSON.parse(stdout.trim());
-        if (info && info.n) {
-          this.recordActivity(info.n, info.t);
-        }
-      } catch (e) {
-        // ignore parse errors
-      }
-    });
-  }
+  // Replaced poll() with persistent psProcess.
 
   recordActivity(processName, windowTitle) {
     const now = Date.now();
@@ -161,8 +168,8 @@ export class AppTracker {
     const dateKey = new Date().toISOString().split('T')[0];
     const appKey = processName.toLowerCase();
 
-    // Skip tracking ourselves
-    if (appKey === 'electron' || appKey === 'distrack') return;
+    // Skip tracking ourselves and system processes
+    if (['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker'].includes(appKey)) return;
 
     const usageData = this.store.get(`usageData.${dateKey}`, {});
 
@@ -247,7 +254,10 @@ export class AppTracker {
 
   stop() {
     this.isTracking = false;
-    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+    if (this.psProcess) {
+      this.psProcess.kill();
+      this.psProcess = null;
+    }
     console.log('[Tracker] Stopped');
   }
 }
