@@ -1,4 +1,4 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { Notification } from 'electron';
 
 export class AppBlocker {
@@ -53,7 +53,7 @@ export class AppBlocker {
     const blocked = this.getBlockedProcessNames();
     if (blocked.length === 0) return;
 
-    exec('tasklist /FO CSV /NH', { windowsHide: true }, (err, stdout) => {
+    execFile('tasklist.exe', ['/FO', 'CSV', '/NH'], { windowsHide: true }, (err, stdout) => {
       if (err) return;
       const lines = stdout.split('\n');
       for (const line of lines) {
@@ -69,7 +69,7 @@ export class AppBlocker {
   }
 
   killProcess(processName) {
-    exec(`taskkill /IM "${processName}.exe" /F`, { windowsHide: true }, (err) => {
+    execFile('taskkill.exe', ['/IM', `${processName}.exe`, '/F'], { windowsHide: true }, (err) => {
       if (err) return; // process may have already exited
 
       // Avoid spamming the same app

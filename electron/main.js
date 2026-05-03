@@ -17,6 +17,30 @@ let blocker = null;
 
 const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
 
+// ── Global Error Handlers ─────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[Main] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] Unhandled Rejection:', reason);
+});
+
+// ── Single Instance Lock ──────────────────────────────────────
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+  // Exit early, but app.quit() is asynchronous, so we use process.exit to be safe, though return is enough in top-level, but this is top-level.
+  process.exit(0);
+}
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (!mainWindow.isVisible()) mainWindow.show();
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 // ── Store defaults ────────────────────────────────────────────
 const STORE_DEFAULTS = {
   usageData: {},
@@ -44,7 +68,13 @@ function createWindow() {
     icon: path.join(__dirname, '../src/assets/icon.png'),
   });
 
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  const startHidden = process.argv.includes('--hidden');
+
+  mainWindow.once('ready-to-show', () => {
+    if (!startHidden) {
+      mainWindow.show();
+    }
+  });
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
@@ -245,7 +275,10 @@ function setupIPC() {
   // -- Kill process --
   ipcMain.handle('kill-process', (_, processName) => {
     return new Promise((resolve) => {
-      exec(`taskkill /IM "${processName}.exe" /F`, { windowsHide: true }, (err) => {
+      execFile('taskkill.exe', ['/IM', `${processName}.exe`, '/F'], { windowsHide: true }, (err) => {
+        if (err) {
+          console.error(`[Main] Failed to kill ${processName}:`, err.message);
+        }
         resolve(!err);
       });
     });

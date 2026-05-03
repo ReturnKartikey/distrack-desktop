@@ -28,7 +28,7 @@ export default function FocusMode() {
   const [tempTimeInput, setTempTimeInput] = useState('');
 
   const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
-  const [initialDuration, setInitialDuration] = useState(defaultWorkTime);
+  const [initialDuration, setInitialDuration] = useState(25 * 60);
   const [selectedMode, setSelectedMode] = useState('Deep Silence');
 
   useEffect(() => {

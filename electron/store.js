@@ -32,7 +32,9 @@ export class Store {
       try {
         const dir = path.dirname(this.path);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(this.path, JSON.stringify(this.data, null, 2), 'utf8');
+        const tmpPath = `${this.path}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(this.data, null, 2), 'utf8');
+        fs.renameSync(tmpPath, this.path);
       } catch (e) {
         console.error('[Store] Failed to save:', e.message);
       }
@@ -43,7 +45,9 @@ export class Store {
     try {
       const dir = path.dirname(this.path);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(this.path, JSON.stringify(this.data, null, 2), 'utf8');
+      const tmpPath = `${this.path}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(this.data, null, 2), 'utf8');
+      fs.renameSync(tmpPath, this.path);
     } catch (e) {
       console.error('[Store] Failed to save:', e.message);
     }
