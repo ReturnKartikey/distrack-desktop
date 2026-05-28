@@ -14,11 +14,16 @@ export default function Classification() {
   const allApps = React.useMemo(() => {
     const merged = new Map<string, AppUsage>();
     for (const app of apps) {
-      merged.set(app.id, app);
+      merged.set(app.id, { ...app });
     }
     for (const app of scannedApps) {
-      if (!merged.has(app.id)) {
-        merged.set(app.id, app);
+      const existing = merged.get(app.id);
+      if (existing) {
+        if (app.icon && app.icon.startsWith('data:') && (!existing.icon || !existing.icon.startsWith('data:'))) {
+          existing.icon = app.icon;
+        }
+      } else {
+        merged.set(app.id, { ...app });
       }
     }
     return Array.from(merged.values()).sort((a, b) => b.timeSpentMinutes - a.timeSpentMinutes);
@@ -57,10 +62,10 @@ export default function Classification() {
   };
 
   return (
-    <div className="p-6 lg:p-10 max-w-7xl mx-auto pb-24 lg:pb-10 space-y-6">
-      <header className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
+    <div className="p-6 lg:p-10 max-w-7xl mx-auto w-full lg:h-full lg:overflow-hidden lg:flex lg:flex-col pb-24 lg:pb-10 space-y-6">
+      <header className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 flex-shrink-0">
         <div>
-          <h1 className="text-2xl font-serif tracking-tight text-white mb-2">App Classification</h1>
+          <h1 className="text-2xl font-serif tracking-tight text-primary mb-2">App Classification</h1>
           <p className="text-xs font-sans text-on-surface-variant uppercase tracking-wider">
             Categorize your apps to calculate focus scores accurately
           </p>
@@ -88,20 +93,29 @@ export default function Classification() {
 
       {/* Scan Feedback Banner */}
       {scanFeedback && (
-        <div className="flex items-center gap-3 px-5 py-3 border border-outline-variant bg-surface-bright text-white text-xs font-mono animate-fadeIn">
+        <div className="flex items-center gap-3 px-5 py-3 border border-outline-variant bg-surface-bright text-primary text-xs font-mono animate-fadeIn">
           <span className="material-symbols-outlined text-[16px] text-green-400">check_circle</span>
           {scanFeedback}
         </div>
       )}
 
-      <div className="glass-card overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="glass-card flex-1 min-h-0 overflow-hidden relative flex flex-col">
+        {/* Radar Scanning Sweep Overlay */}
+        {isScanning && (
+          <div className="absolute inset-0 z-40 bg-background/10 backdrop-blur-[1px] pointer-events-none overflow-hidden">
+            {/* The sweeping radar light */}
+            <div className="w-full h-[2px] bg-gradient-to-r from-transparent via-primary/40 to-transparent absolute top-0 animate-sweep"></div>
+            {/* Ambient scan lines */}
+            <div className="w-full h-full bg-[linear-gradient(rgba(255,255,255,0.01)_50%,rgba(0,0,0,0.04)_50%)] bg-[size:100%_4px]"></div>
+          </div>
+        )}
+        <div className="overflow-x-auto overflow-y-auto flex-1">
           <table className="w-full text-left border-collapse">
-            <thead>
+            <thead className="sticky top-0 bg-surface-dim z-10">
               <tr className="border-b border-outline-variant">
-                <th className="p-6 font-serif text-white font-normal text-lg w-[45%]">Application</th>
-                <th className="p-6 font-serif text-white font-normal text-lg w-[25%] hidden sm:table-cell">Time</th>
-                <th className="p-6 font-serif text-white font-normal text-lg w-[30%]">Category</th>
+                <th className="p-6 font-serif text-primary font-normal text-lg w-[45%]">Application</th>
+                <th className="p-6 font-serif text-primary font-normal text-lg w-[25%] hidden sm:table-cell">Time</th>
+                <th className="p-6 font-serif text-primary font-normal text-lg w-[30%]">Category</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant">
@@ -134,11 +148,15 @@ export default function Classification() {
                 <tr key={app.id} className="hover:bg-surface-bright transition-colors group">
                   <td className="p-6">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-surface flex items-center justify-center text-white border border-outline-variant flex-shrink-0">
-                        <span className="material-symbols-outlined">{app.icon}</span>
+                      <div className="w-10 h-10 bg-surface flex items-center justify-center text-primary border border-outline-variant flex-shrink-0">
+                        {app.icon && app.icon.startsWith('data:') ? (
+                          <img src={app.icon} className="w-6 h-6 object-contain" alt="" />
+                        ) : (
+                          <span className="material-symbols-outlined">{app.icon || 'apps'}</span>
+                        )}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-sans text-white tracking-wide truncate">{app.name}</p>
+                        <p className="font-sans text-primary tracking-wide truncate">{app.name}</p>
                         {app.windowTitle && (
                           <p className="text-[10px] font-mono text-on-surface-variant mt-1 truncate max-w-[250px]">{app.windowTitle}</p>
                         )}
@@ -146,40 +164,42 @@ export default function Classification() {
                     </div>
                   </td>
                   <td className="p-6 hidden sm:table-cell">
-                    <span className="font-mono text-sm text-white">
+                    <span className="font-mono text-sm text-primary">
                       {app.timeSpentMinutes > 0 ? formatTime(app.timeSpentMinutes) : '—'}
                     </span>
                   </td>
-                  <td className="p-6 relative">
-                    <div
-                      className="w-full bg-surface border border-outline-variant px-4 py-3 text-xs uppercase tracking-widest font-bold cursor-pointer flex justify-between items-center transition-colors hover:border-white select-none"
-                      onClick={() => setOpenDropdownId(openDropdownId === app.id ? null : app.id)}
-                    >
-                      <span className={`
-                        ${app.category === 'productive' ? 'text-white' : ''}
-                        ${app.category === 'wasteful' ? 'text-error' : ''}
-                        ${app.category === 'neutral' ? 'text-on-surface-variant' : ''}
-                      `}>
-                        {app.category}
-                      </span>
-                      <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
-                        {openDropdownId === app.id ? 'expand_less' : 'expand_more'}
-                      </span>
-                    </div>
-
-                    {openDropdownId === app.id && (
-                      <div className="absolute top-[calc(100%-12px)] left-6 right-6 bg-surface border border-outline-variant shadow-2xl z-50 flex flex-col select-none">
-                        <div className="px-4 py-3 text-xs uppercase tracking-widest font-bold cursor-pointer hover:bg-surface-bright text-white transition-colors flex items-center gap-2" onClick={() => handleCategoryChange(app.id, 'productive')}>
-                          <span className="w-2 h-2 bg-white rounded-full"></span> Productive
-                        </div>
-                        <div className="px-4 py-3 text-xs uppercase tracking-widest font-bold cursor-pointer hover:bg-surface-bright text-on-surface-variant transition-colors flex items-center gap-2" onClick={() => handleCategoryChange(app.id, 'neutral')}>
-                          <span className="w-2 h-2 bg-on-surface-variant rounded-full"></span> Neutral
-                        </div>
-                        <div className="px-4 py-3 text-xs uppercase tracking-widest font-bold cursor-pointer hover:bg-error/10 text-error transition-colors flex items-center gap-2" onClick={() => handleCategoryChange(app.id, 'wasteful')}>
-                          <span className="w-2 h-2 bg-error rounded-full"></span> Wasteful
-                        </div>
+                  <td className="p-6">
+                    <div className="relative w-full">
+                      <div
+                        className="w-full bg-surface border border-outline-variant px-4 py-3 text-xs uppercase tracking-widest font-bold cursor-pointer flex justify-between items-center transition-colors hover:border-white select-none"
+                        onClick={() => setOpenDropdownId(openDropdownId === app.id ? null : app.id)}
+                      >
+                        <span className={`
+                          ${app.category === 'productive' ? 'text-primary' : ''}
+                          ${app.category === 'wasteful' ? 'text-error' : ''}
+                          ${app.category === 'neutral' ? 'text-on-surface-variant' : ''}
+                        `}>
+                          {app.category}
+                        </span>
+                        <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
+                          {openDropdownId === app.id ? 'expand_less' : 'expand_more'}
+                        </span>
                       </div>
-                    )}
+
+                      {openDropdownId === app.id && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-outline-variant shadow-2xl z-50 flex flex-col select-none">
+                          <div className="px-4 py-3 text-xs uppercase tracking-widest font-bold cursor-pointer hover:bg-surface-bright text-primary transition-colors flex items-center gap-2" onClick={() => handleCategoryChange(app.id, 'productive')}>
+                            <span className="w-2 h-2 bg-primary rounded-full"></span> Productive
+                          </div>
+                          <div className="px-4 py-3 text-xs uppercase tracking-widest font-bold cursor-pointer hover:bg-surface-bright text-on-surface-variant transition-colors flex items-center gap-2" onClick={() => handleCategoryChange(app.id, 'neutral')}>
+                            <span className="w-2 h-2 bg-on-surface-variant rounded-full"></span> Neutral
+                          </div>
+                          <div className="px-4 py-3 text-xs uppercase tracking-widest font-bold cursor-pointer hover:bg-error/10 text-error transition-colors flex items-center gap-2" onClick={() => handleCategoryChange(app.id, 'wasteful')}>
+                            <span className="w-2 h-2 bg-error rounded-full"></span> Wasteful
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -191,8 +211,8 @@ export default function Classification() {
       {/* Summary bar */}
       {allApps.length > 0 && (
         <div className="flex flex-wrap gap-6 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant px-2">
-          <span>Total: <span className="text-white">{allApps.length}</span></span>
-          <span>Productive: <span className="text-white">{allApps.filter(a => a.category === 'productive').length}</span></span>
+          <span>Total: <span className="text-primary">{allApps.length}</span></span>
+          <span>Productive: <span className="text-primary">{allApps.filter(a => a.category === 'productive').length}</span></span>
           <span>Neutral: <span className="text-on-surface-variant">{allApps.filter(a => a.category === 'neutral').length}</span></span>
           <span>Wasteful: <span className="text-error">{allApps.filter(a => a.category === 'wasteful').length}</span></span>
         </div>

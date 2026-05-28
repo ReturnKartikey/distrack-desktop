@@ -49,10 +49,14 @@ const STORE_DEFAULTS = {
   focusSessions: [],
   blocklist: [],
   onboarded: false,
+  userProfile: { name: '', email: '' },
 };
 
 // ── Window creation ───────────────────────────────────────────
 function createWindow() {
+  const iconPath = path.join(__dirname, '../src/assets/icon.png');
+  const winIcon = nativeImage.createFromPath(iconPath);
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -65,7 +69,7 @@ function createWindow() {
     },
     backgroundColor: '#0A0A0A',
     show: false,
-    icon: path.join(__dirname, '../src/assets/icon.png'),
+    icon: winIcon,
   });
 
   const startHidden = process.argv.includes('--hidden');
@@ -94,6 +98,87 @@ function createWindow() {
   tracker = new AppTracker(store, mainWindow);
   blocker = new AppBlocker(store, mainWindow);
   tracker.start();
+
+  const takeScreenshots = process.argv.includes('--screenshot');
+  if (takeScreenshots) {
+    mainWindow.webContents.once('did-finish-load', async () => {
+      const fs = await import('fs');
+      const screenshotDir = path.join(__dirname, '../screenshots');
+      if (!fs.existsSync(screenshotDir)) {
+        fs.mkdirSync(screenshotDir, { recursive: true });
+      }
+
+      const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+      await delay(3000); // Wait for React to fully load and mount
+
+      const capture = async (route, filename) => {
+        console.log(`[Screenshot] Navigating to ${route}...`);
+        await mainWindow.webContents.executeJavaScript(`window.location.hash = '${route}'`);
+        await delay(3000); // Wait for charts and components to settle
+        console.log(`[Screenshot] Capturing ${filename}...`);
+        const img = await mainWindow.webContents.capturePage();
+        fs.writeFileSync(path.join(screenshotDir, filename), img.toPNG());
+        console.log(`[Screenshot] Saved ${filename}`);
+      };
+
+      try {
+        // Ensure user is logged in
+        await mainWindow.webContents.executeJavaScript(`
+          if (window.setUserProfile) {
+            window.setUserProfile({ name: 'Kartikey', email: 'kartikey@gmail.com' });
+          } else {
+            localStorage.setItem('distrack_user', JSON.stringify({ name: 'Kartikey', email: 'kartikey@gmail.com' }));
+          }
+        `);
+        await delay(2000); // Wait for state update
+
+        // 1. Capture Dashboard
+        await capture('#/', 'dashboard.png');
+
+        // 2. Capture Classification
+        await capture('#/classification', 'classification.png');
+
+        // 3. Capture Focus/Flow
+        await capture('#/focus', 'focus.png');
+
+        // 4. Capture Insights
+        await capture('#/insights', 'insights.png');
+
+        // 5. Capture Settings
+        await capture('#/settings', 'settings.png');
+
+        // 6. Capture Login Page
+        console.log('[Screenshot] Preparing to capture login page...');
+        store.set('userProfile', { name: '', email: '' });
+        await mainWindow.webContents.executeJavaScript(`
+          if (window.setUserProfile) {
+            window.setUserProfile({ name: '', email: '' });
+          } else {
+            localStorage.removeItem('distrack_user');
+          }
+          window.location.hash = '#/auth';
+        `);
+        await delay(3000); // Wait for route transition
+        console.log('[Screenshot] Capturing login.png...');
+        const loginImg = await mainWindow.webContents.capturePage();
+        fs.writeFileSync(path.join(screenshotDir, 'login.png'), loginImg.toPNG());
+        console.log('[Screenshot] Saved login.png');
+
+        // Restore user
+        store.set('userProfile', { name: 'Kartikey', email: 'kartikey@gmail.com' });
+        await mainWindow.webContents.executeJavaScript(`
+          localStorage.setItem('distrack_user', JSON.stringify({ name: 'Kartikey', email: 'kartikey@gmail.com' }));
+        `);
+        
+        console.log('[Screenshot] All screenshots captured successfully!');
+      } catch (e) {
+        console.error('[Screenshot] Capture failed:', e);
+      } finally {
+        app.isQuitting = true;
+        app.quit();
+      }
+    });
+  }
 }
 
 // ── System tray ───────────────────────────────────────────────
@@ -149,10 +234,10 @@ function setupIPC() {
   // -- Scan running apps --
   ipcMain.handle('scan-running-apps', () => {
     return new Promise((resolve) => {
-      const psScript = `Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object ProcessName, MainWindowTitle, Id | ConvertTo-Json -Compress`;
+      const psScript = `Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object ProcessName, MainWindowTitle, Id, Path | ConvertTo-Json -Compress`;
       execFile('powershell.exe', [
         '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', psScript
-      ], { windowsHide: true, timeout: 10000 }, (err, stdout, stderr) => {
+      ], { windowsHide: true, timeout: 10000 }, async (err, stdout, stderr) => {
         if (err) {
           console.error('[Scan] PowerShell error:', err.message);
           console.error('[Scan] stderr:', stderr);
@@ -183,10 +268,19 @@ function setupIPC() {
             explorer: 'neutral', spotify: 'neutral', notepad: 'neutral',
             discord: 'wasteful', telegram: 'wasteful', whatsapp: 'wasteful',
           };
-          const result = data
-            .filter(p => p && p.ProcessName && !['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker'].includes(p.ProcessName.toLowerCase()))
-            .map(p => {
+          const resultPromises = data
+            .filter(p => p && p.ProcessName && !['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker', 'nvidia share', 'nvspcaps64', 'nvcontainer', 'nvspcaps', 'nvidia web helper', 'powertoys.quickaccess', 'powertoys', 'powertoys.awake', 'powertoys.fancyzones', 'antigravity', 'conhost', 'wslhost', 'wsl'].includes(p.ProcessName.toLowerCase()))
+            .map(async (p) => {
               const key = p.ProcessName.toLowerCase();
+              let iconDataUrl = null;
+              if (p.Path) {
+                try {
+                  const img = await app.getFileIcon(p.Path, { size: 'normal' });
+                  iconDataUrl = img.toDataURL();
+                } catch (e) {
+                  // ignore
+                }
+              }
               return {
                 id: key,
                 name: p.ProcessName,
@@ -194,9 +288,10 @@ function setupIPC() {
                 timeSpentMinutes: 0,
                 category: categories[key] || DEFAULT_CATS[key] || 'neutral',
                 type: 'application',
-                icon: ICON_MAP[key] || 'apps',
+                icon: iconDataUrl || ICON_MAP[key] || 'apps',
               };
             });
+          const result = await Promise.all(resultPromises);
           // Deduplicate by id
           const unique = [...new Map(result.map(r => [r.id, r])).values()];
           console.log(`[Scan] Found ${unique.length} apps`);
@@ -271,6 +366,13 @@ function setupIPC() {
   // -- Onboarding --
   ipcMain.handle('is-onboarded', () => store.get('onboarded', false));
   ipcMain.handle('set-onboarded', () => { store.set('onboarded', true); return true; });
+
+  // -- User Profile --
+  ipcMain.handle('get-user-profile', () => store.get('userProfile', { name: '', email: '' }));
+  ipcMain.handle('set-user-profile', (_, profile) => {
+    store.set('userProfile', profile);
+    return true;
+  });
 
   // -- Kill process --
   ipcMain.handle('kill-process', (_, processName) => {

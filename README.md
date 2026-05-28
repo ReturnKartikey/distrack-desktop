@@ -1,9 +1,8 @@
-
 ## Distrack
 
 Distrack is a Minimalistic Windows desktop application designed for digital mindfulness. It helps you stay productive by tracking your real-time activity and providing powerful tools to manage your digital focus.
 
-<img width="1919" height="909" alt="image" src="https://github.com/user-attachments/assets/b2df3f88-3703-4728-b6c8-23c9e68585da" />
+<img width="1919" height="909" alt="Dashboard" src="./screenshots/dashboard.png" />
 
 
 ## Key Features
@@ -18,16 +17,20 @@ Distrack is a Minimalistic Windows desktop application designed for digital mind
 
 ### Login & Onboarding
 
-
-<img width="1919" height="909" alt="image" src="https://github.com/user-attachments/assets/05c4982c-5ec0-4a84-a5ff-c9b0db02bccd" />
+<img width="1919" height="909" alt="Login & Onboarding" src="./screenshots/login.png" />
 
 ### App Classification
 
-<img width="1919" height="909" alt="image" src="https://github.com/user-attachments/assets/8cfe99b8-4340-4114-9c1e-a8fe3cd299f8" />
+<img width="1919" height="909" alt="App Classification" src="./screenshots/classification.png" />
+
+### Deep Focus Mode (Flow)
+
+<img width="1919" height="909" alt="Deep Focus Mode" src="./screenshots/focus.png" />
 
 ### Deep Insights
 
-<img width="1919" height="909" alt="image" src="https://github.com/user-attachments/assets/cba320b9-24e1-4b0c-82c4-4a1d68788bd9" />
+<img width="1919" height="909" alt="Deep Insights" src="./screenshots/insights.png" />
+
 
 ## Tech Stack
 

@@ -5,26 +5,26 @@ export default function Settings() {
   const { settings, updateSettings, clearData, isElectron } = useAppContext();
 
   return (
-    <div className="p-6 lg:p-10 max-w-4xl mx-auto pb-24 lg:pb-10 space-y-8">
-      <header className="mb-8">
-        <h1 className="text-2xl font-serif tracking-tight text-white mb-2">Settings</h1>
+    <div className="p-6 lg:p-10 max-w-4xl mx-auto w-full lg:h-full lg:overflow-hidden lg:flex lg:flex-col pb-24 lg:pb-10 space-y-6">
+      <header className="mb-2 flex-shrink-0">
+        <h1 className="text-2xl font-serif tracking-tight text-primary mb-2">Settings</h1>
         <p className="text-xs font-sans text-on-surface-variant uppercase tracking-wider">Configure your experience</p>
       </header>
 
-      <div className="space-y-6">
+      <div className="space-y-6 overflow-y-auto pr-1 flex-1">
         {/* General Settings */}
         <section className="glass-card p-6 sm:p-8">
-          <h2 className="font-serif text-xl mb-6 text-white">General</h2>
+          <h2 className="font-serif text-xl mb-6 text-primary">General</h2>
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-sans tracking-wide text-white">Appearance</p>
+                <p className="text-sm font-sans tracking-wide text-primary">Appearance</p>
                 <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">Select your preferred theme</p>
               </div>
               <select
                 value={settings.theme}
                 onChange={(e) => updateSettings({ theme: e.target.value })}
-                className="bg-surface border border-outline-variant px-4 py-2 text-xs uppercase tracking-widest font-bold text-white outline-none cursor-pointer"
+                className="bg-surface border border-outline-variant px-4 py-2 text-xs uppercase tracking-widest font-bold text-primary outline-none cursor-pointer"
               >
                 <option value="system">System</option>
                 <option value="dark">Dark</option>
@@ -36,7 +36,7 @@ export default function Settings() {
 
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-sans tracking-wide text-white">Launch on Startup</p>
+                <p className="text-sm font-sans tracking-wide text-primary">Launch on Startup</p>
                 <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">
                   {isElectron ? 'Start Distrack automatically when you log in' : 'Start Distrack automatically (requires desktop app)'}
                 </p>
@@ -53,11 +53,11 @@ export default function Settings() {
 
         {/* Notifications */}
         <section className="glass-card p-6 sm:p-8">
-          <h2 className="font-serif text-xl mb-6 text-white">Notifications</h2>
+          <h2 className="font-serif text-xl mb-6 text-primary">Notifications</h2>
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-sans tracking-wide text-white">Push Notifications</p>
+                <p className="text-sm font-sans tracking-wide text-primary">Push Notifications</p>
                 <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">
                   {isElectron ? 'Get notified when focus sessions end or apps are blocked' : 'Receive alerts for focus sessions'}
                 </p>
@@ -78,7 +78,7 @@ export default function Settings() {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-sans tracking-wide text-white">Delete Data</p>
+                <p className="text-sm font-sans tracking-wide text-primary">Delete Data</p>
                 <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">Clear all usage history and focus sessions</p>
               </div>
               <button
@@ -97,9 +97,9 @@ export default function Settings() {
 
         {/* About */}
         <section className="glass-card p-6 sm:p-8">
-          <h2 className="font-serif text-xl mb-4 text-white">About</h2>
+          <h2 className="font-serif text-xl mb-4 text-primary">About</h2>
           <div className="text-xs text-on-surface-variant space-y-2">
-            <p><span className="font-bold text-white">Distrack</span> — Digital Mindfulness</p>
+            <p><span className="font-bold text-primary">Distrack</span> — Digital Mindfulness</p>
             <p>Version 1.0.0</p>
             <p className="text-[10px] uppercase tracking-widest mt-4 opacity-60">Built with Electron + React + Vite</p>
           </div>

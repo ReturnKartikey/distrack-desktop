@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isOnboarded: () => ipcRenderer.invoke('is-onboarded'),
   setOnboarded: () => ipcRenderer.invoke('set-onboarded'),
 
+  // -- User Profile --
+  getUserProfile: () => ipcRenderer.invoke('get-user-profile'),
+  setUserProfile: (profile) => ipcRenderer.invoke('set-user-profile', profile),
+
   // -- Process control --
   killProcess: (processName) => ipcRenderer.invoke('kill-process', processName),
 });

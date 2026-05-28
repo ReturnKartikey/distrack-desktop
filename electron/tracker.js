@@ -1,6 +1,7 @@
-import { execFile, exec } from 'child_process';
+import { execFile, exec, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { app } from 'electron';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,7 +47,7 @@ while($true) {
   $p=[uint32]0
   [W.U]::GetWindowThreadProcessId($h,[ref]$p)|Out-Null
   $pr=Get-Process -Id $p -ErrorAction SilentlyContinue
-  if($pr){@{n=$pr.ProcessName;t=$pr.MainWindowTitle;p=[int]$p}|ConvertTo-Json -Compress}
+  if($pr){@{n=$pr.ProcessName;t=$pr.MainWindowTitle;p=[int]$p;path=$pr.Path}|ConvertTo-Json -Compress}
   Start-Sleep -Seconds 3
 }
 `;
@@ -71,71 +72,86 @@ export class AppTracker {
     this.initialScan();
 
     // Start persistent powershell process
-    import('child_process').then(({ spawn }) => {
-      this.psProcess = spawn('powershell.exe', [
-        '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', PS_SCRIPT
-      ], { windowsHide: true });
+    this.psProcess = spawn('powershell.exe', [
+      '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', PS_SCRIPT
+    ], { windowsHide: true });
 
-      this.psProcess.stdout.on('data', (data) => {
-        const output = data.toString().trim();
-        const lines = output.split('\\n');
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const info = JSON.parse(line.trim());
-            if (info && info.n) {
-              this.recordActivity(info.n, info.t);
-            }
-          } catch (e) {
-            // ignore parse errors
+    this.psProcess.stdout.on('data', (data) => {
+      const output = data.toString().trim();
+      const lines = output.split('\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const info = JSON.parse(line.trim());
+          if (info && info.n) {
+            this.recordActivity(info.n, info.t, info.path);
           }
+        } catch (e) {
+          // ignore parse errors
         }
-      });
+      }
     });
   }
 
   /** Scan ALL running processes with visible windows and seed them into today's usage data */
   initialScan() {
     const dateKey = new Date().toISOString().split('T')[0];
-    const existing = this.store.get(`usageData.${dateKey}`, {});
-
-    // If we already have data for today, skip the initial scan
-    if (Object.keys(existing).length > 3) {
-      this.hasInitialScan = true;
-      return;
-    }
+    const usageData = this.store.get(`usageData.${dateKey}`, {});
 
     exec(
-      'powershell -NoProfile -Command "Get-Process | Where-Object {$_.MainWindowTitle -ne \'\'} | Select-Object ProcessName, MainWindowTitle, Id | ConvertTo-Json -Compress"',
+      'powershell -NoProfile -Command "Get-Process | Where-Object {$_.MainWindowTitle -ne \'\'} | Select-Object ProcessName, MainWindowTitle, Id, Path | ConvertTo-Json -Compress"',
       { windowsHide: true, timeout: 8000 },
-      (err, stdout) => {
-        if (err || !stdout.trim()) return;
+      async (err, stdout) => {
+        if (err || !stdout.trim()) {
+          this.hasInitialScan = true;
+          return;
+        }
         try {
           let data = JSON.parse(stdout.trim());
           if (!Array.isArray(data)) data = [data];
 
-          const usageData = this.store.get(`usageData.${dateKey}`, {});
           const now = Date.now();
+          let changed = false;
 
-          for (const proc of data) {
-            if (!proc.ProcessName) continue;
+          const promises = data.map(async (proc) => {
+            if (!proc.ProcessName) return;
             const appKey = proc.ProcessName.toLowerCase();
 
             // Skip ourselves and system processes
-            if (['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker'].includes(appKey)) continue;
+            if (['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker', 'nvidia share', 'nvspcaps64', 'nvcontainer', 'nvspcaps', 'nvidia web helper', 'powertoys.quickaccess', 'powertoys', 'powertoys.awake', 'powertoys.fancyzones', 'antigravity', 'conhost', 'wslhost', 'wsl'].includes(appKey)) return;
 
-            if (!usageData[appKey]) {
-              usageData[appKey] = {
-                processName: proc.ProcessName,
-                windowTitle: proc.MainWindowTitle || proc.ProcessName,
-                totalSeconds: 1, // Seed with 1 second so it shows up
-                category: this.getCategory(appKey),
-                lastActive: now,
-              };
+            if (!usageData[appKey] || !usageData[appKey].icon || !usageData[appKey].icon.startsWith('data:')) {
+              let iconDataUrl = null;
+              if (proc.Path) {
+                try {
+                  const img = await app.getFileIcon(proc.Path, { size: 'normal' });
+                  iconDataUrl = img.toDataURL();
+                } catch (e) {
+                  // ignore
+                }
+              }
+              if (!usageData[appKey]) {
+                usageData[appKey] = {
+                  processName: proc.ProcessName,
+                  windowTitle: proc.MainWindowTitle || proc.ProcessName,
+                  totalSeconds: 1, // Seed with 1 second so it shows up
+                  category: this.getCategory(appKey),
+                  lastActive: now,
+                  icon: iconDataUrl,
+                };
+                changed = true;
+              } else if (iconDataUrl) {
+                usageData[appKey].icon = iconDataUrl;
+                changed = true;
+              }
             }
-          }
+          });
 
-          this.store.set(`usageData.${dateKey}`, usageData);
+          await Promise.all(promises);
+
+          if (changed) {
+            this.store.set(`usageData.${dateKey}`, usageData);
+          }
           this.hasInitialScan = true;
 
           // Push update to renderer immediately
@@ -158,7 +174,7 @@ export class AppTracker {
 
   // Replaced poll() with persistent psProcess.
 
-  recordActivity(processName, windowTitle) {
+  async recordActivity(processName, windowTitle, exePath) {
     const now = Date.now();
     const elapsed = this.lastPollTime ? Math.round((now - this.lastPollTime) / 1000) : 3;
     this.lastPollTime = now;
@@ -169,17 +185,27 @@ export class AppTracker {
     const appKey = processName.toLowerCase();
 
     // Skip tracking ourselves and system processes
-    if (['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker'].includes(appKey)) return;
+    if (['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker', 'nvidia share', 'nvspcaps64', 'nvcontainer', 'nvspcaps', 'nvidia web helper', 'powertoys.quickaccess', 'powertoys', 'powertoys.awake', 'powertoys.fancyzones', 'antigravity', 'conhost', 'wslhost', 'wsl'].includes(appKey)) return;
 
     const usageData = this.store.get(`usageData.${dateKey}`, {});
 
     if (!usageData[appKey]) {
+      let iconDataUrl = null;
+      if (exePath) {
+        try {
+          const img = await app.getFileIcon(exePath, { size: 'normal' });
+          iconDataUrl = img.toDataURL();
+        } catch (e) {
+          // ignore
+        }
+      }
       usageData[appKey] = {
         processName,
         windowTitle,
         totalSeconds: 0,
         category: this.getCategory(appKey),
         lastActive: now,
+        icon: iconDataUrl,
       };
     }
 
@@ -215,7 +241,7 @@ export class AppTracker {
         timeSpentMinutes: Math.ceil(d.totalSeconds / 60),
         category: this.getCategory(key),
         type: 'application',
-        icon: ICON_MAP[key] || 'apps',
+        icon: d.icon || ICON_MAP[key] || 'apps',
       }))
       .filter(a => a.timeSpentMinutes > 0)
       .sort((a, b) => b.timeSpentMinutes - a.timeSpentMinutes);

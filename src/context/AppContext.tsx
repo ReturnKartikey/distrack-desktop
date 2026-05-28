@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { AppUsage, AppCategory } from '../data/mockData';
+import { AppUsage, AppCategory, initialApps } from '../data/mockData';
 import { calculateFocusScore } from '../utils/logic';
 import type { FocusSession, AppSettings, DailyTotal } from '../types/electron';
 
@@ -15,8 +15,8 @@ interface AppContextType {
   focusScore: number;
   updateAppCategory: (id: string, newCategory: AppCategory) => void;
   isFocusModeActive: boolean;
-  startFocusSession: (config: { mode: string }) => void;
-  stopFocusSession: () => void;
+  startFocusSession: (config: { mode: string }, bypassBackend?: boolean) => void;
+  stopFocusSession: (bypassBackend?: boolean) => void;
   blocklist: string[];
   toggleBlockApp: (id: string) => void;
   focusSessions: FocusSession[];
@@ -50,6 +50,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [dailyTotals, setDailyTotals] = useState<DailyTotal[]>([]);
   const [isOnboarded, setIsOnboardedState] = useState(true);
   const [timeframe, setTimeframe] = useState<'daily' | 'weekly'>('daily');
+  const timeframeRef = useRef(timeframe);
+
+  useEffect(() => {
+    timeframeRef.current = timeframe;
+  }, [timeframe]);
+
   const [userProfile, setUserProfileState] = useState<UserProfile>(() => {
     try {
       const saved = localStorage.getItem('distrack_user');
@@ -61,14 +67,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setUserProfile = useCallback((p: UserProfile) => {
     setUserProfileState(p);
-    try { localStorage.setItem('distrack_user', JSON.stringify(p)); } catch {}
+    localStorage.setItem('distrack_user', JSON.stringify(p));
+    if (isElectron) {
+      window.electronAPI!.setUserProfile(p);
+    }
   }, []);
+
+  useEffect(() => {
+    (window as any).setUserProfile = setUserProfile;
+    return () => {
+      delete (window as any).setUserProfile;
+    };
+  }, [setUserProfile]);
 
   // ── Initial data load ──
   useEffect(() => {
     if (!isElectron) {
-      // In browser mode, do an initial scan to show something immediately
-      // (won't actually work without Electron, but keeps the interface consistent)
+      // Seed mock data for browser presentation mode
+      setApps(initialApps);
+      
+      const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+      const mockValues = [1.0, 3.5, 4.2, 2.8, 5.1, 3.0, 1.1];
+      const totals: DailyTotal[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        const dateKey = d.toISOString().split('T')[0];
+        const val = mockValues[d.getDay() % mockValues.length];
+        totals.push({
+          day: days[d.getDay()],
+          label: days[d.getDay()],
+          value: val,
+          date: dateKey
+        });
+      }
+      setDailyTotals(totals);
+
+      setFocusSessions([
+        { id: '1', durationMinutes: 25, date: new Date(Date.now() - 3600000 * 2).toISOString(), mode: 'Deep Silence' },
+        { id: '2', durationMinutes: 50, date: new Date(Date.now() - 3600000 * 24).toISOString(), mode: 'Strict Lock' },
+        { id: '3', durationMinutes: 15, date: new Date(Date.now() - 3600000 * 48).toISOString(), mode: 'Light Focus' }
+      ]);
       return;
     }
 
@@ -83,7 +121,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       api.getDailyTotals(),
       api.isOnboarded(),
       api.getFocusActive(),
-    ]).then(([trackedApps, bl, sessions, sett, totals, onboarded, focusActive]) => {
+      api.getUserProfile(),
+    ]).then(([trackedApps, bl, sessions, sett, totals, onboarded, focusActive, profile]) => {
       if (trackedApps.length > 0) {
         setApps(trackedApps);
         setFocusScore(calculateFocusScore(trackedApps));
@@ -94,12 +133,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setDailyTotals(totals);
       setIsOnboardedState(onboarded);
       setIsFocusModeActive(focusActive);
+      if (profile && profile.name) setUserProfileState(profile);
     }).catch(console.error);
 
     // Listen for live tracking updates from the tracker
     const unsub = api.onTrackingUpdate((data) => {
-      setApps(data.apps);
-      setFocusScore(calculateFocusScore(data.apps));
+      if (timeframeRef.current === 'weekly') {
+        api.getTrackedApps('weekly').then((trackedApps) => {
+          setApps(trackedApps);
+          setFocusScore(calculateFocusScore(trackedApps));
+        });
+      } else {
+        setApps(data.apps);
+        setFocusScore(calculateFocusScore(data.apps));
+      }
     });
     cleanupRef.current = unsub;
 
@@ -142,15 +189,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const startFocusSession = useCallback((config: { mode: string }) => {
-    if (isElectron) {
+  const startFocusSession = useCallback((config: { mode: string }, bypassBackend?: boolean) => {
+    if (isElectron && !bypassBackend) {
       window.electronAPI!.startFocusSession(config);
     }
     setIsFocusModeActive(true);
   }, []);
 
-  const stopFocusSession = useCallback(() => {
-    if (isElectron) {
+  const stopFocusSession = useCallback((bypassBackend?: boolean) => {
+    if (isElectron && !bypassBackend) {
       window.electronAPI!.stopFocusSession();
     }
     setIsFocusModeActive(false);
@@ -191,8 +238,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return merged;
       });
       return scanned;
+    } else {
+      // Simulate scan in browser mode
+      const mockScanned: AppUsage[] = [
+        { id: "chrome", name: "Google Chrome", timeSpentMinutes: 0, category: "neutral", type: "application", icon: "public" },
+        { id: "notion", name: "Notion", timeSpentMinutes: 0, category: "productive", type: "application", icon: "edit_note" },
+        { id: "spotify", name: "Spotify", timeSpentMinutes: 0, category: "neutral", type: "application", icon: "music_note" },
+        { id: "discord", name: "Discord", timeSpentMinutes: 0, category: "wasteful", type: "application", icon: "chat" }
+      ];
+      setApps(prev => {
+        const merged = [...prev];
+        for (const app of mockScanned) {
+          if (!merged.find(a => a.id === app.id)) {
+            merged.push(app);
+          }
+        }
+        return merged;
+      });
+      return mockScanned;
     }
-    return [];
   }, []);
 
   const updateSettingsFn = useCallback((s: Partial<AppSettings>) => {

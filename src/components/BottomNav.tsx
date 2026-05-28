@@ -24,7 +24,7 @@ export default function BottomNav() {
           className={({ isActive }) => cn(
             "flex flex-col items-center justify-center px-4 py-2 transition-all font-sans",
             isActive 
-              ? "text-white opacity-100"
+              ? "text-primary opacity-100"
               : "text-on-surface opacity-60 hover:opacity-100"
           )}
         >
