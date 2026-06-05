@@ -5,7 +5,8 @@ import { fileURLToPath } from 'url';
 import { Store } from './store.js';
 import { AppTracker } from './tracker.js';
 import { AppBlocker } from './blocker.js';
-import { autoUpdater } from 'electron-updater';
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 import fs from 'fs';
 import http from 'http';
 
