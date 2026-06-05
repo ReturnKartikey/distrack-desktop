@@ -21,7 +21,7 @@ Distrack is a Minimalistic Windows desktop application designed for digital mind
 
 ### App Classification
 
-<img width="1919" height="909" alt="App Classification" src="./screenshots/classification.png" />
+<img width="1919" height="909" alt="App Classification" src="./screenshots/app-classification.png" />
 
 ### Deep Focus Mode (Flow)
 
