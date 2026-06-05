@@ -174,7 +174,6 @@ export default function Auth() {
         if (isLogin) {
           // Fallback mock mode
           setTimeout(() => {
-            setIsConnecting(false);
             setUserProfile({ name: email.split('@')[0], email });
             navigate('/');
           }, 1200);
@@ -183,7 +182,6 @@ export default function Auth() {
           setSignupData({ name, email, password });
           setShowOTP(true);
           setOtpCountdown(60);
-          setIsConnecting(false);
         }
       }
     } catch (err: any) {
@@ -201,6 +199,7 @@ export default function Auth() {
         }
       }
       setFeedback({ type: 'error', message: errMsg });
+    } finally {
       setIsConnecting(false);
     }
   };
@@ -208,15 +207,19 @@ export default function Auth() {
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setFeedback(null);
+    console.log('[Auth] handleVerifyOTP started. currentUser:', auth.currentUser);
     
     setIsConnecting(true);
     try {
       if (isFirebaseConfigured) {
         if (auth.currentUser) {
+          console.log('[Auth] Calling auth.currentUser.reload()...');
           // Reload the Firebase user to check verification status
           await auth.currentUser.reload();
+          console.log('[Auth] auth.currentUser.reload() finished. emailVerified:', auth.currentUser.emailVerified);
           
           if (auth.currentUser.emailVerified) {
+            console.log('[Auth] Email is verified! Setting user profile and navigating...');
             const profile = {
               name: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'User',
               email: auth.currentUser.email || '',
@@ -226,15 +229,18 @@ export default function Auth() {
             setUserProfile(profile);
             navigate('/');
           } else {
+            console.log('[Auth] Email is NOT verified yet.');
             setFeedback({ 
               type: 'error', 
               message: 'Your email has not been verified yet. Please check your inbox and click the verification link.' 
             });
           }
         } else {
+          console.error('[Auth] auth.currentUser is null!');
           throw new Error('No active user session found.');
         }
       } else {
+        console.log('[Auth] Firebase not configured. Running mock verification...');
         // Fallback local mode - instantly verifies!
         setTimeout(() => {
           setIsConnecting(false);
@@ -243,9 +249,10 @@ export default function Auth() {
         }, 1000);
       }
     } catch (err: any) {
-      console.error('[Auth] Verification check failed:', err);
+      console.error('[Auth] Verification check failed with error:', err);
       setFeedback({ type: 'error', message: err.message || 'Failed to check verification status. Please try again.' });
     } finally {
+      console.log('[Auth] handleVerifyOTP finally block executing. Setting isConnecting to false.');
       setIsConnecting(false);
     }
   };
