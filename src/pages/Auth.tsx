@@ -2,6 +2,15 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import brandIcon from '../assets/icon.png';
+import { auth, isFirebaseConfigured } from '../utils/firebase';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  sendPasswordResetEmail, 
+  GoogleAuthProvider, 
+  signInWithCredential,
+  updateProfile
+} from 'firebase/auth';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -12,8 +21,44 @@ export default function Auth() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'error' | 'success', message: string } | null>(null);
 
+  // OTP Verification States
+  const [showOTP, setShowOTP] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [userEnteredOTP, setUserEnteredOTP] = useState<string[]>(Array(6).fill(''));
+  const [signupData, setSignupData] = useState({ name: '', email: '', password: '' });
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [resendNotification, setResendNotification] = useState<string | null>(null);
+
   const navigate = useNavigate();
   const { setUserProfile, userProfile } = useAppContext();
+
+  React.useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (showOTP && otpCountdown > 0) {
+      timer = setTimeout(() => setOtpCountdown(prev => prev - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [showOTP, otpCountdown]);
+
+  const handleOtpChange = (value: string, index: number) => {
+    if (!/^\d*$/.test(value)) return;
+    const newOtp = [...userEnteredOTP];
+    newOtp[index] = value.substring(value.length - 1);
+    setUserEnteredOTP(newOtp);
+
+    // Auto-focus next input
+    if (value && index < 5) {
+      const nextInput = document.getElementById(`otp-${index + 1}`);
+      nextInput?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === 'Backspace' && !userEnteredOTP[index] && index > 0) {
+      const prevInput = document.getElementById(`otp-${index - 1}`);
+      prevInput?.focus();
+    }
+  };
 
   React.useEffect(() => {
     if (userProfile && userProfile.name) {
@@ -27,8 +72,17 @@ export default function Auth() {
     try {
       if (window.electronAPI && window.electronAPI.googleSignIn) {
         const profile = await window.electronAPI.googleSignIn();
-        setUserProfile(profile);
-        navigate('/');
+        
+        if (isFirebaseConfigured) {
+          if (!profile.idToken) {
+            throw new Error('Google Authentication completed but no ID token was returned.');
+          }
+          const credential = GoogleAuthProvider.credential(profile.idToken);
+          await signInWithCredential(auth, credential);
+        } else {
+          setUserProfile(profile);
+          navigate('/');
+        }
       } else {
         // Fallback for browser testing/development
         console.log('[Auth] Google Sign-In running in fallback mode');
@@ -55,7 +109,7 @@ export default function Auth() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFeedback(null);
 
@@ -65,11 +119,24 @@ export default function Auth() {
         return;
       }
       setIsConnecting(true);
-      setTimeout(() => {
+      try {
+        if (isFirebaseConfigured) {
+          await sendPasswordResetEmail(auth, email);
+          setFeedback({ type: 'success', message: 'Password reset link sent to your email.' });
+          setTimeout(() => setShowForgot(false), 3000);
+        } else {
+          // Fallback mock mode
+          setTimeout(() => {
+            setFeedback({ type: 'success', message: 'Password reset link sent to your email.' });
+            setTimeout(() => setShowForgot(false), 3000);
+          }, 1200);
+        }
+      } catch (err: any) {
+        console.error('[Auth] Password reset failed:', err);
+        setFeedback({ type: 'error', message: err.message || 'Password reset failed. Please try again.' });
+      } finally {
         setIsConnecting(false);
-        setFeedback({ type: 'success', message: 'Password reset link sent to your email.' });
-        setTimeout(() => setShowForgot(false), 3000);
-      }, 1200);
+      }
       return;
     }
 
@@ -79,15 +146,256 @@ export default function Auth() {
     }
 
     setIsConnecting(true);
-    setTimeout(() => {
+    try {
+      if (isFirebaseConfigured) {
+        if (isLogin) {
+          await signInWithEmailAndPassword(auth, email, password);
+        } else {
+          // Generate 6-digit OTP code for signup
+          const code = Math.floor(100000 + Math.random() * 900000).toString();
+          setOtpCode(code);
+          setSignupData({ name, email, password });
+          setUserEnteredOTP(Array(6).fill('')); // Reset entry
+
+          try {
+            if (window.electronAPI && (window.electronAPI as any).sendOTPEmail) {
+              await (window.electronAPI as any).sendOTPEmail(email, code);
+              setResendNotification(null);
+            } else {
+              console.log('[Auth Dev Sandbox] Verification code:', code);
+              setResendNotification(`[Dev Sandbox] Code is ${code}`);
+            }
+            setShowOTP(true);
+            setOtpCountdown(60);
+            setIsConnecting(false);
+          } catch (emailErr: any) {
+            console.error('[Auth] Failed to send verification email:', emailErr);
+            setFeedback({ type: 'error', message: `Failed to send verification email: ${emailErr.message || emailErr}` });
+            setIsConnecting(false);
+          }
+        }
+      } else {
+        if (isLogin) {
+          // Fallback mock mode
+          setTimeout(() => {
+            setIsConnecting(false);
+            setUserProfile({ name: email.split('@')[0], email });
+            navigate('/');
+          }, 1200);
+        } else {
+          // Fallback mock mode for signup -> show OTP screen with sandbox code
+          const code = Math.floor(100000 + Math.random() * 900000).toString();
+          setOtpCode(code);
+          setSignupData({ name, email, password });
+          setUserEnteredOTP(Array(6).fill('')); // Reset entry
+
+          setTimeout(() => {
+            console.log('[Auth Dev Sandbox] Verification code:', code);
+            setResendNotification(`[Dev Sandbox] Code is ${code}`);
+            setShowOTP(true);
+            setOtpCountdown(60);
+            setIsConnecting(false);
+          }, 1200);
+        }
+      }
+    } catch (err: any) {
+      console.error('[Auth] Authentication failed:', err);
+      let errMsg = 'Authentication failed. Please check your credentials.';
+      if (err && err.code) {
+        if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+          errMsg = 'Incorrect email or password.';
+        } else if (err.code === 'auth/email-already-in-use') {
+          errMsg = 'An account already exists with this email address.';
+        } else if (err.code === 'auth/invalid-email') {
+          errMsg = 'Please enter a valid email address.';
+        } else {
+          errMsg = err.message;
+        }
+      }
+      setFeedback({ type: 'error', message: errMsg });
       setIsConnecting(false);
-      const displayName = isLogin
-        ? email.split('@')[0]
-        : name || email.split('@')[0];
-      setUserProfile({ name: displayName, email });
-      navigate('/');
-    }, 1200);
+    }
   };
+
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFeedback(null);
+    
+    const enteredCode = userEnteredOTP.join('');
+    if (enteredCode.length < 6) {
+      setFeedback({ type: 'error', message: 'Please enter all 6 digits.' });
+      return;
+    }
+    
+    if (enteredCode !== otpCode) {
+      setFeedback({ type: 'error', message: 'Incorrect verification code. Please check your inbox and try again.' });
+      return;
+    }
+    
+    setIsConnecting(true);
+    try {
+      if (isFirebaseConfigured) {
+        const userCredential = await createUserWithEmailAndPassword(auth, signupData.email, signupData.password);
+        if (signupData.name && userCredential.user) {
+          await updateProfile(userCredential.user, { displayName: signupData.name });
+        }
+        // AppContext handles profile update & navigation
+      } else {
+        // Fallback local mode
+        setTimeout(() => {
+          setIsConnecting(false);
+          setUserProfile({ name: signupData.name || signupData.email.split('@')[0], email: signupData.email });
+          navigate('/');
+        }, 1200);
+      }
+    } catch (err: any) {
+      console.error('[Auth] Signup failed:', err);
+      let errMsg = 'Failed to create account. Please try again.';
+      if (err && err.code) {
+        if (err.code === 'auth/email-already-in-use') {
+          errMsg = 'An account already exists with this email address.';
+        } else if (err.code === 'auth/weak-password') {
+          errMsg = 'Password is too weak. Please choose a stronger password.';
+        } else {
+          errMsg = err.message;
+        }
+      }
+      setFeedback({ type: 'error', message: errMsg });
+      setIsConnecting(false);
+    }
+  };
+
+  const handleResendOTP = async () => {
+    if (otpCountdown > 0) return;
+    
+    setFeedback(null);
+    setResendNotification(null);
+    setIsConnecting(true);
+    
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setOtpCode(code);
+    setUserEnteredOTP(Array(6).fill('')); // Clear inputs
+    
+    try {
+      if (window.electronAPI && (window.electronAPI as any).sendOTPEmail) {
+        await (window.electronAPI as any).sendOTPEmail(signupData.email, code);
+        setFeedback({ type: 'success', message: 'A new verification code has been sent to your email.' });
+      } else {
+        console.log('[Auth Dev Sandbox] Resent verification code:', code);
+        setResendNotification(`[Dev Sandbox] Code is ${code}`);
+      }
+      setOtpCountdown(60);
+    } catch (err: any) {
+      console.error('[Auth] Failed to resend verification email:', err);
+      setFeedback({ type: 'error', message: `Failed to resend code: ${err.message || err}` });
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  if (showOTP) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 relative overflow-hidden text-primary">
+        {/* Ambient background decoration */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl mix-blend-screen pointer-events-none"></div>
+        
+        <div className="w-full max-w-md bg-surface border border-outline-variant p-10 relative z-10 shadow-2xl flex flex-col">
+          <div className="flex flex-col items-center justify-center mb-8 gap-3">
+            <div className="w-12 h-12 flex items-center justify-center rounded-sm overflow-hidden">
+              <img src={brandIcon} className="w-full h-full object-contain" alt="Distrack Logo" />
+            </div>
+            <h1 className="text-3xl font-serif italic tracking-tight text-primary">
+              Distrack  
+            </h1>
+          </div>
+
+          <div className="text-center mb-8">
+            <h2 className="text-xl font-serif mb-2 text-primary">
+              Verify Your Email
+            </h2>
+            <p className="text-xs font-sans text-on-surface-variant uppercase tracking-wider">
+              Enter the 6-digit code sent to
+            </p>
+            <p className="text-xs font-mono text-primary mt-1 select-all">{signupData.email}</p>
+          </div>
+
+          {resendNotification && (
+            <div className="mb-6 px-4 py-3 text-[10px] font-mono border bg-primary/5 border-primary/20 text-primary flex items-center justify-center gap-2 animate-pulse">
+              <span className="material-symbols-outlined text-[14px]">terminal</span>
+              {resendNotification}
+            </div>
+          )}
+
+          {feedback && (
+            <div className={`mb-6 px-4 py-3 text-xs font-bold uppercase tracking-widest border ${feedback.type === 'error' ? 'bg-error/10 border-error/50 text-error' : 'bg-green-500/10 border-green-500/50 text-green-400'}`}>
+              {feedback.message}
+            </div>
+          )}
+
+          <form onSubmit={handleVerifyOTP} className="flex flex-col gap-8">
+            <div className="flex justify-between gap-2">
+              {userEnteredOTP.map((digit, idx) => (
+                <input
+                  key={idx}
+                  id={`otp-${idx}`}
+                  type="text"
+                  required
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleOtpChange(e.target.value, idx)}
+                  onKeyDown={(e) => handleOtpKeyDown(e, idx)}
+                  disabled={isConnecting}
+                  className="w-12 h-14 bg-surface-bright border border-outline-variant text-center text-xl font-mono focus:border-primary focus:outline-none transition-colors disabled:opacity-50"
+                  placeholder="-"
+                />
+              ))}
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={isConnecting}
+              className={`mt-4 bg-primary text-background py-4 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-surface-bright hover:text-primary border border-outline transition-all w-full flex justify-center items-center gap-2 ${isConnecting ? 'opacity-50 cursor-wait' : ''}`}
+            >
+              {isConnecting ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-background/20 border-t-background rounded-full animate-spin"></div>
+                  Verifying...
+                </>
+              ) : (
+                <>
+                  Verify & Sign Up
+                  <span className="material-symbols-outlined text-[16px]">how_to_reg</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-8 text-center flex flex-col gap-4">
+            <button
+              type="button"
+              onClick={handleResendOTP}
+              disabled={isConnecting || otpCountdown > 0}
+              className="text-xs text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider font-bold text-[10px]"
+            >
+              {otpCountdown > 0 ? `Resend Code in ${otpCountdown}s` : 'Resend Code'}
+            </button>
+
+            <button 
+              type="button" 
+              onClick={() => { setShowOTP(false); setFeedback(null); }}
+              className="text-xs text-on-surface-variant hover:text-primary transition-colors uppercase tracking-wider font-bold text-[10px]"
+            >
+              Back to Sign Up
+            </button>
+          </div>
+        </div>
+        
+        <div className="absolute bottom-10 text-[10px] uppercase font-sans font-bold tracking-[0.3em] opacity-40 text-on-surface">
+          Digital Mindfulness
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 relative overflow-hidden text-primary">

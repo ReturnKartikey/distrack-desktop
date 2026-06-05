@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // -- Focus sessions --
   getFocusSessions: () => ipcRenderer.invoke('get-focus-sessions'),
   addFocusSession: (session) => ipcRenderer.invoke('add-focus-session', session),
+  setFocusSessions: (sessions) => ipcRenderer.invoke('set-focus-sessions', sessions),
   startFocusSession: (config) => ipcRenderer.invoke('start-focus-session', config),
   stopFocusSession: () => ipcRenderer.invoke('stop-focus-session'),
   getFocusActive: () => ipcRenderer.invoke('get-focus-active'),
@@ -36,6 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // -- Blocklist --
   getBlocklist: () => ipcRenderer.invoke('get-blocklist'),
   toggleBlockApp: (appId) => ipcRenderer.invoke('toggle-block-app', appId),
+  setBlocklist: (newList) => ipcRenderer.invoke('set-blocklist', newList),
 
   // -- Settings --
   getSettings: () => ipcRenderer.invoke('get-settings'),
@@ -52,6 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUserProfile: () => ipcRenderer.invoke('get-user-profile'),
   setUserProfile: (profile) => ipcRenderer.invoke('set-user-profile', profile),
   googleSignIn: () => ipcRenderer.invoke('google-sign-in'),
+  sendOTPEmail: (email, otpCode) => ipcRenderer.invoke('send-otp-email', email, otpCode),
 
   // -- Process control --
   killProcess: (processName) => ipcRenderer.invoke('kill-process', processName),

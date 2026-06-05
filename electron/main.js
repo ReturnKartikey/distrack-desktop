@@ -351,6 +351,11 @@ function setupIPC() {
     return true;
   });
 
+  ipcMain.handle('set-focus-sessions', (_, sessions) => {
+    store.set('focusSessions', sessions || []);
+    return true;
+  });
+
   ipcMain.handle('start-focus-session', (_, config) => {
     blocker.start(config);
     return true;
@@ -373,6 +378,11 @@ function setupIPC() {
     else list.push(appId);
     store.set('blocklist', list);
     return list;
+  });
+
+  ipcMain.handle('set-blocklist', (_, newList) => {
+    store.set('blocklist', newList || []);
+    return newList || [];
   });
 
   // -- Settings --
@@ -478,6 +488,7 @@ function setupIPC() {
 
           const tokenData = await tokenResponse.json();
           const accessToken = tokenData.access_token;
+          const idToken = tokenData.id_token;
 
           // Fetch user profile info
           const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -498,7 +509,7 @@ function setupIPC() {
 
           // Save profile in store
           store.set('userProfile', profile);
-          resolve(profile);
+          resolve({ ...profile, idToken });
         } catch (err) {
           reject(err);
         } finally {
@@ -529,6 +540,56 @@ function setupIPC() {
         reject(err);
       });
     });
+  });
+
+  // -- Send OTP Email via Resend --
+  ipcMain.handle('send-otp-email', async (_, email, otpCode) => {
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) {
+      throw new Error('Resend API Key is not configured. Please add RESEND_API_KEY to your .env.local file.');
+    }
+
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${resendApiKey}`,
+        },
+        body: JSON.stringify({
+          from: 'Distrack <onboarding@resend.dev>', // default free tier sandbox sender
+          to: email,
+          subject: 'Verify your Distrack Account',
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 30px; background-color: #0A0A0A; color: #E2E8F0; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+              <div style="text-align: center; margin-bottom: 25px;">
+                <h1 style="font-family: Georgia, serif; font-style: italic; font-weight: normal; font-size: 28px; margin: 0; color: #E2E8F0; letter-spacing: -0.01em;">Distrack</h1>
+                <p style="text-transform: uppercase; font-size: 8px; letter-spacing: 0.25em; color: #94A3B8; margin: 5px 0 0 0; font-weight: bold; opacity: 0.65;">Digital Mindfulness</p>
+              </div>
+              <h2 style="font-size: 18px; font-weight: normal; margin-bottom: 15px; color: #E2E8F0; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">Verify Your Email Address</h2>
+              <p style="font-size: 13px; line-height: 1.6; color: #94A3B8;">Welcome to Distrack. To complete your registration, please enter the following 6-digit verification code in the application:</p>
+              <div style="background-color: #121212; border: 1px solid rgba(255,255,255,0.08); padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #D4AF37; margin: 25px 0; font-family: monospace;">
+                ${otpCode}
+              </div>
+              <p style="color: #64748B; font-size: 11px; line-height: 1.5; margin-top: 25px;">This verification code is valid for 10 minutes. If you did not request this code, you can safely ignore this email.</p>
+              <div style="margin-top: 35px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 15px; text-align: center; font-size: 9px; text-transform: uppercase; letter-spacing: 0.3em; color: #64748B; font-weight: bold;">
+                Digital Mindfulness
+              </div>
+            </div>
+          `,
+        }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.message || `Failed to send email (Status ${response.status})`);
+      }
+
+      return true;
+    } catch (err) {
+      console.error('[Resend] Email sending failed:', err);
+      throw err;
+    }
   });
 }
 

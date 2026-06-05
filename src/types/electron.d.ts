@@ -16,6 +16,7 @@ export interface ElectronAPI {
   // Focus
   getFocusSessions: () => Promise<FocusSession[]>;
   addFocusSession: (session: Omit<FocusSession, 'id'>) => Promise<boolean>;
+  setFocusSessions: (sessions: FocusSession[]) => Promise<boolean>;
   startFocusSession: (config: { mode: string }) => Promise<boolean>;
   stopFocusSession: () => Promise<boolean>;
   getFocusActive: () => Promise<boolean>;
@@ -24,6 +25,7 @@ export interface ElectronAPI {
   // Blocklist
   getBlocklist: () => Promise<string[]>;
   toggleBlockApp: (appId: string) => Promise<string[]>;
+  setBlocklist: (newList: string[]) => Promise<string[]>;
 
   // Settings
   getSettings: () => Promise<AppSettings>;
@@ -40,6 +42,7 @@ export interface ElectronAPI {
   getUserProfile: () => Promise<UserProfile>;
   setUserProfile: (profile: UserProfile) => Promise<boolean>;
   googleSignIn: () => Promise<UserProfile>;
+  sendOTPEmail: (email: string, otpCode: string) => Promise<boolean>;
 
   // Process control
   killProcess: (processName: string) => Promise<boolean>;
@@ -49,6 +52,7 @@ export interface UserProfile {
   name: string;
   email: string;
   picture?: string;
+  idToken?: string;
 }
 
 export interface DailyTotal {

@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { AppUsage, AppCategory, initialApps } from '../data/mockData';
 import { calculateFocusScore } from '../utils/logic';
 import type { FocusSession, AppSettings, DailyTotal } from '../types/electron';
+import { auth, db, isFirebaseConfigured } from '../utils/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 
 const isElectron = !!window.electronAPI;
 
@@ -9,6 +12,7 @@ interface UserProfile {
   name: string;
   email: string;
   picture?: string;
+  idToken?: string;
 }
 
 interface AppContextType {
@@ -72,6 +76,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (isElectron) {
       window.electronAPI!.setUserProfile(p);
     }
+    if (!p.name && isFirebaseConfigured) {
+      auth.signOut().catch(console.error);
+    }
   }, []);
 
   useEffect(() => {
@@ -80,6 +87,99 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       delete (window as any).setUserProfile;
     };
   }, [setUserProfile]);
+
+  // Refs for tracking current local state values in the sync listener
+  const settingsRef = useRef(settings);
+  const blocklistRef = useRef(blocklist);
+  const focusSessionsRef = useRef(focusSessions);
+
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
+  useEffect(() => { blocklistRef.current = blocklist; }, [blocklist]);
+  useEffect(() => { focusSessionsRef.current = focusSessions; }, [focusSessions]);
+
+  // ── Firebase Synchronization ──
+  useEffect(() => {
+    if (!isFirebaseConfigured) return;
+
+    let unsubDoc: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (unsubDoc) {
+        unsubDoc();
+        unsubDoc = null;
+      }
+
+      if (firebaseUser) {
+        const profile = {
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Google User',
+          email: firebaseUser.email || '',
+          picture: firebaseUser.photoURL || '',
+        };
+        setUserProfileState(profile);
+        localStorage.setItem('distrack_user', JSON.stringify(profile));
+        if (isElectron) {
+          window.electronAPI!.setUserProfile(profile);
+        }
+
+        // Subscribe to Firestore document updates
+        const docRef = doc(db, 'users', firebaseUser.uid);
+        unsubDoc = onSnapshot(docRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+
+            // Sync settings
+            if (data.settings && JSON.stringify(data.settings) !== JSON.stringify(settingsRef.current)) {
+              setSettings(data.settings);
+              if (isElectron) window.electronAPI!.updateSettings(data.settings);
+            }
+
+            // Sync blocklist
+            if (data.blocklist && JSON.stringify(data.blocklist) !== JSON.stringify(blocklistRef.current)) {
+              setBlocklist(data.blocklist);
+              if (isElectron) window.electronAPI!.setBlocklist(data.blocklist);
+            }
+
+            // Sync focus sessions
+            if (data.focusSessions && JSON.stringify(data.focusSessions) !== JSON.stringify(focusSessionsRef.current)) {
+              setFocusSessions(data.focusSessions);
+              if (isElectron) window.electronAPI!.setFocusSessions(data.focusSessions);
+            }
+
+            // Sync app categories
+            if (data.appCategories && isElectron) {
+              window.electronAPI!.getAppCategories().then(currentCats => {
+                if (JSON.stringify(data.appCategories) !== JSON.stringify(currentCats)) {
+                  Object.entries(data.appCategories).forEach(([procName, cat]) => {
+                    window.electronAPI!.updateAppCategory(procName, cat as any);
+                  });
+                }
+              });
+            }
+          } else {
+            console.log('[Firebase] Document not found. Creating first-time cloud backup...');
+            setDoc(docRef, {
+              settings: settingsRef.current,
+              blocklist: blocklistRef.current,
+              focusSessions: focusSessionsRef.current,
+            }, { merge: true }).catch(console.error);
+          }
+        }, (err) => {
+          console.error('[Firebase] Firestore snapshot listener error:', err);
+        });
+      } else {
+        setUserProfileState({ name: '', email: '', picture: '' });
+        localStorage.removeItem('distrack_user');
+        if (isElectron) {
+          window.electronAPI!.setUserProfile({ name: '', email: '', picture: '' });
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubDoc) unsubDoc();
+    };
+  }, [isElectron]);
 
   // ── Initial data load ──
   useEffect(() => {
@@ -181,12 +281,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ── Handlers ──
   const updateAppCategory = useCallback((id: string, newCategory: AppCategory) => {
+    const updateLocal = () => {
+      setApps(prev => prev.map(a => a.id === id ? { ...a, category: newCategory } : a));
+    };
     if (isElectron) {
       window.electronAPI!.updateAppCategory(id, newCategory).then(() => {
-        setApps(prev => prev.map(a => a.id === id ? { ...a, category: newCategory } : a));
+        updateLocal();
+        window.electronAPI!.getAppCategories().then(cats => {
+          const currentUser = auth.currentUser;
+          if (isFirebaseConfigured && currentUser) {
+            setDoc(doc(db, 'users', currentUser.uid), { appCategories: cats }, { merge: true }).catch(console.error);
+          }
+        });
       });
     } else {
-      setApps(prev => prev.map(a => a.id === id ? { ...a, category: newCategory } : a));
+      updateLocal();
     }
   }, []);
 
@@ -206,11 +315,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const toggleBlockApp = useCallback((id: string) => {
     if (isElectron) {
-      window.electronAPI!.toggleBlockApp(id).then(setBlocklist);
+      window.electronAPI!.toggleBlockApp(id).then(newBlocklist => {
+        setBlocklist(newBlocklist);
+        const currentUser = auth.currentUser;
+        if (isFirebaseConfigured && currentUser) {
+          setDoc(doc(db, 'users', currentUser.uid), { blocklist: newBlocklist }, { merge: true }).catch(console.error);
+        }
+      });
     } else {
-      setBlocklist(prev =>
-        prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id]
-      );
+      setBlocklist(prev => {
+        const newBlocklist = prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id];
+        const currentUser = auth.currentUser;
+        if (isFirebaseConfigured && currentUser) {
+          setDoc(doc(db, 'users', currentUser.uid), { blocklist: newBlocklist }, { merge: true }).catch(console.error);
+        }
+        return newBlocklist;
+      });
     }
   }, []);
 
@@ -218,10 +338,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const newSession = { ...session, id: Date.now().toString() };
     if (isElectron) {
       window.electronAPI!.addFocusSession(session).then(() => {
-        window.electronAPI!.getFocusSessions().then(setFocusSessions);
+        window.electronAPI!.getFocusSessions().then(sessions => {
+          setFocusSessions(sessions);
+          const currentUser = auth.currentUser;
+          if (isFirebaseConfigured && currentUser) {
+            setDoc(doc(db, 'users', currentUser.uid), { focusSessions: sessions }, { merge: true }).catch(console.error);
+          }
+        });
       });
     } else {
-      setFocusSessions(prev => [newSession, ...prev]);
+      setFocusSessions(prev => {
+        const list = [newSession, ...prev];
+        const currentUser = auth.currentUser;
+        if (isFirebaseConfigured && currentUser) {
+          setDoc(doc(db, 'users', currentUser.uid), { focusSessions: list }, { merge: true }).catch(console.error);
+        }
+        return list;
+      });
     }
   }, []);
 
@@ -262,9 +395,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateSettingsFn = useCallback((s: Partial<AppSettings>) => {
     if (isElectron) {
-      window.electronAPI!.updateSettings(s).then(setSettings);
+      window.electronAPI!.updateSettings(s).then(newSettings => {
+        setSettings(newSettings);
+        const currentUser = auth.currentUser;
+        if (isFirebaseConfigured && currentUser) {
+          setDoc(doc(db, 'users', currentUser.uid), { settings: newSettings }, { merge: true }).catch(console.error);
+        }
+      });
     } else {
-      setSettings(prev => ({ ...prev, ...s }));
+      setSettings(prev => {
+        const newSettings = { ...prev, ...s };
+        const currentUser = auth.currentUser;
+        if (isFirebaseConfigured && currentUser) {
+          setDoc(doc(db, 'users', currentUser.uid), { settings: newSettings }, { merge: true }).catch(console.error);
+        }
+        return newSettings;
+      });
     }
   }, []);
 
