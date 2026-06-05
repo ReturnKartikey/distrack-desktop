@@ -53,6 +53,7 @@ export interface UserProfile {
   email: string;
   picture?: string;
   idToken?: string;
+  emailVerified?: boolean;
 }
 
 export interface DailyTotal {

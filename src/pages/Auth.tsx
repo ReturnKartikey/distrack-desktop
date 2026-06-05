@@ -9,7 +9,8 @@ import {
   sendPasswordResetEmail, 
   GoogleAuthProvider, 
   signInWithCredential,
-  updateProfile
+  updateProfile,
+  sendEmailVerification
 } from 'firebase/auth';
 
 export default function Auth() {
@@ -62,7 +63,14 @@ export default function Auth() {
 
   React.useEffect(() => {
     if (userProfile && userProfile.name) {
-      navigate('/');
+      if (userProfile.emailVerified === false) {
+        if (isFirebaseConfigured && auth.currentUser) {
+          setSignupData({ name: auth.currentUser.displayName || '', email: auth.currentUser.email || '', password: '' });
+          setShowOTP(true);
+        }
+      } else {
+        navigate('/');
+      }
     }
   }, [userProfile, navigate]);
 
@@ -151,28 +159,16 @@ export default function Auth() {
         if (isLogin) {
           await signInWithEmailAndPassword(auth, email, password);
         } else {
-          // Generate 6-digit OTP code for signup
-          const code = Math.floor(100000 + Math.random() * 900000).toString();
-          setOtpCode(code);
-          setSignupData({ name, email, password });
-          setUserEnteredOTP(Array(6).fill('')); // Reset entry
-
-          try {
-            if (window.electronAPI && (window.electronAPI as any).sendOTPEmail) {
-              await (window.electronAPI as any).sendOTPEmail(email, code);
-              setResendNotification(null);
-            } else {
-              console.log('[Auth Dev Sandbox] Verification code:', code);
-              setResendNotification(`[Dev Sandbox] Code is ${code}`);
-            }
-            setShowOTP(true);
-            setOtpCountdown(60);
-            setIsConnecting(false);
-          } catch (emailErr: any) {
-            console.error('[Auth] Failed to send verification email:', emailErr);
-            setFeedback({ type: 'error', message: `Failed to send verification email: ${emailErr.message || emailErr}` });
-            setIsConnecting(false);
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          if (name && userCredential.user) {
+            await updateProfile(userCredential.user, { displayName: name });
           }
+          if (userCredential.user) {
+            await sendEmailVerification(userCredential.user);
+          }
+          setSignupData({ name, email, password });
+          setShowOTP(true);
+          setOtpCountdown(60);
         }
       } else {
         if (isLogin) {
@@ -183,19 +179,11 @@ export default function Auth() {
             navigate('/');
           }, 1200);
         } else {
-          // Fallback mock mode for signup -> show OTP screen with sandbox code
-          const code = Math.floor(100000 + Math.random() * 900000).toString();
-          setOtpCode(code);
+          // Fallback mock mode for signup -> show verification screen
           setSignupData({ name, email, password });
-          setUserEnteredOTP(Array(6).fill('')); // Reset entry
-
-          setTimeout(() => {
-            console.log('[Auth Dev Sandbox] Verification code:', code);
-            setResendNotification(`[Dev Sandbox] Code is ${code}`);
-            setShowOTP(true);
-            setOtpCountdown(60);
-            setIsConnecting(false);
-          }, 1200);
+          setShowOTP(true);
+          setOtpCountdown(60);
+          setIsConnecting(false);
         }
       }
     } catch (err: any) {
@@ -221,46 +209,43 @@ export default function Auth() {
     e.preventDefault();
     setFeedback(null);
     
-    const enteredCode = userEnteredOTP.join('');
-    if (enteredCode.length < 6) {
-      setFeedback({ type: 'error', message: 'Please enter all 6 digits.' });
-      return;
-    }
-    
-    if (enteredCode !== otpCode) {
-      setFeedback({ type: 'error', message: 'Incorrect verification code. Please check your inbox and try again.' });
-      return;
-    }
-    
     setIsConnecting(true);
     try {
       if (isFirebaseConfigured) {
-        const userCredential = await createUserWithEmailAndPassword(auth, signupData.email, signupData.password);
-        if (signupData.name && userCredential.user) {
-          await updateProfile(userCredential.user, { displayName: signupData.name });
+        if (auth.currentUser) {
+          // Reload the Firebase user to check verification status
+          await auth.currentUser.reload();
+          
+          if (auth.currentUser.emailVerified) {
+            const profile = {
+              name: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'User',
+              email: auth.currentUser.email || '',
+              picture: auth.currentUser.photoURL || '',
+              emailVerified: true,
+            };
+            setUserProfile(profile);
+            navigate('/');
+          } else {
+            setFeedback({ 
+              type: 'error', 
+              message: 'Your email has not been verified yet. Please check your inbox and click the verification link.' 
+            });
+          }
+        } else {
+          throw new Error('No active user session found.');
         }
-        // AppContext handles profile update & navigation
       } else {
-        // Fallback local mode
+        // Fallback local mode - instantly verifies!
         setTimeout(() => {
           setIsConnecting(false);
-          setUserProfile({ name: signupData.name || signupData.email.split('@')[0], email: signupData.email });
+          setUserProfile({ name: signupData.name || signupData.email.split('@')[0], email: signupData.email, emailVerified: true });
           navigate('/');
-        }, 1200);
+        }, 1000);
       }
     } catch (err: any) {
-      console.error('[Auth] Signup failed:', err);
-      let errMsg = 'Failed to create account. Please try again.';
-      if (err && err.code) {
-        if (err.code === 'auth/email-already-in-use') {
-          errMsg = 'An account already exists with this email address.';
-        } else if (err.code === 'auth/weak-password') {
-          errMsg = 'Password is too weak. Please choose a stronger password.';
-        } else {
-          errMsg = err.message;
-        }
-      }
-      setFeedback({ type: 'error', message: errMsg });
+      console.error('[Auth] Verification check failed:', err);
+      setFeedback({ type: 'error', message: err.message || 'Failed to check verification status. Please try again.' });
+    } finally {
       setIsConnecting(false);
     }
   };
@@ -269,25 +254,39 @@ export default function Auth() {
     if (otpCountdown > 0) return;
     
     setFeedback(null);
-    setResendNotification(null);
     setIsConnecting(true);
     
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setOtpCode(code);
-    setUserEnteredOTP(Array(6).fill('')); // Clear inputs
-    
     try {
-      if (window.electronAPI && (window.electronAPI as any).sendOTPEmail) {
-        await (window.electronAPI as any).sendOTPEmail(signupData.email, code);
-        setFeedback({ type: 'success', message: 'A new verification code has been sent to your email.' });
+      if (isFirebaseConfigured) {
+        if (auth.currentUser) {
+          await sendEmailVerification(auth.currentUser);
+          setFeedback({ type: 'success', message: 'A new verification link has been sent to your email.' });
+        } else {
+          throw new Error('No active user session found to resend email.');
+        }
       } else {
-        console.log('[Auth Dev Sandbox] Resent verification code:', code);
-        setResendNotification(`[Dev Sandbox] Code is ${code}`);
+        // Fallback mock mode
+        setFeedback({ type: 'success', message: '[Dev Sandbox] A new verification link has been simulated.' });
       }
       setOtpCountdown(60);
     } catch (err: any) {
       console.error('[Auth] Failed to resend verification email:', err);
-      setFeedback({ type: 'error', message: `Failed to resend code: ${err.message || err}` });
+      setFeedback({ type: 'error', message: `Failed to resend link: ${err.message || err}` });
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleCancelVerification = async () => {
+    setFeedback(null);
+    setIsConnecting(true);
+    try {
+      if (isFirebaseConfigured) {
+        await auth.signOut();
+      }
+      setShowOTP(false);
+    } catch (err: any) {
+      console.error('[Auth] Sign out failed:', err);
     } finally {
       setIsConnecting(false);
     }
@@ -314,17 +313,13 @@ export default function Auth() {
               Verify Your Email
             </h2>
             <p className="text-xs font-sans text-on-surface-variant uppercase tracking-wider">
-              Enter the 6-digit code sent to
+              A verification link was sent to
             </p>
             <p className="text-xs font-mono text-primary mt-1 select-all">{signupData.email}</p>
+            <p className="text-[11px] font-sans text-on-surface-variant mt-4 leading-relaxed">
+              Please check your spam or junk folder if you don't see it in your inbox. Click the link in the email to verify your account, then click the button below.
+            </p>
           </div>
-
-          {resendNotification && (
-            <div className="mb-6 px-4 py-3 text-[10px] font-mono border bg-primary/5 border-primary/20 text-primary flex items-center justify-center gap-2 animate-pulse">
-              <span className="material-symbols-outlined text-[14px]">terminal</span>
-              {resendNotification}
-            </div>
-          )}
 
           {feedback && (
             <div className={`mb-6 px-4 py-3 text-xs font-bold uppercase tracking-widest border ${feedback.type === 'error' ? 'bg-error/10 border-error/50 text-error' : 'bg-green-500/10 border-green-500/50 text-green-400'}`}>
@@ -332,39 +327,21 @@ export default function Auth() {
             </div>
           )}
 
-          <form onSubmit={handleVerifyOTP} className="flex flex-col gap-8">
-            <div className="flex justify-between gap-2">
-              {userEnteredOTP.map((digit, idx) => (
-                <input
-                  key={idx}
-                  id={`otp-${idx}`}
-                  type="text"
-                  required
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleOtpChange(e.target.value, idx)}
-                  onKeyDown={(e) => handleOtpKeyDown(e, idx)}
-                  disabled={isConnecting}
-                  className="w-12 h-14 bg-surface-bright border border-outline-variant text-center text-xl font-mono focus:border-primary focus:outline-none transition-colors disabled:opacity-50"
-                  placeholder="-"
-                />
-              ))}
-            </div>
-
+          <form onSubmit={handleVerifyOTP} className="flex flex-col gap-6">
             <button 
               type="submit" 
               disabled={isConnecting}
-              className={`mt-4 bg-primary text-background py-4 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-surface-bright hover:text-primary border border-outline transition-all w-full flex justify-center items-center gap-2 ${isConnecting ? 'opacity-50 cursor-wait' : ''}`}
+              className={`bg-primary text-background py-4 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-surface-bright hover:text-primary border border-outline transition-all w-full flex justify-center items-center gap-2 ${isConnecting ? 'opacity-50 cursor-wait' : ''}`}
             >
               {isConnecting ? (
                 <>
                   <div className="w-3 h-3 border-2 border-background/20 border-t-background rounded-full animate-spin"></div>
-                  Verifying...
+                  Checking Status...
                 </>
               ) : (
                 <>
-                  Verify & Sign Up
-                  <span className="material-symbols-outlined text-[16px]">how_to_reg</span>
+                  I've Clicked the Verification Link
+                  <span className="material-symbols-outlined text-[16px]">verified_user</span>
                 </>
               )}
             </button>
@@ -377,13 +354,14 @@ export default function Auth() {
               disabled={isConnecting || otpCountdown > 0}
               className="text-xs text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider font-bold text-[10px]"
             >
-              {otpCountdown > 0 ? `Resend Code in ${otpCountdown}s` : 'Resend Code'}
+              {otpCountdown > 0 ? `Resend Link in ${otpCountdown}s` : 'Resend Verification Link'}
             </button>
 
             <button 
               type="button" 
-              onClick={() => { setShowOTP(false); setFeedback(null); }}
-              className="text-xs text-on-surface-variant hover:text-primary transition-colors uppercase tracking-wider font-bold text-[10px]"
+              onClick={handleCancelVerification}
+              disabled={isConnecting}
+              className="text-xs text-on-surface-variant hover:text-primary transition-colors uppercase tracking-wider font-bold text-[10px] disabled:opacity-50"
             >
               Back to Sign Up
             </button>

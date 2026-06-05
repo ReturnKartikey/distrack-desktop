@@ -11,7 +11,7 @@ import Settings from './pages/Settings';
 
 function ProtectedRoute() {
   const { userProfile } = useAppContext();
-  if (!userProfile || !userProfile.name) {
+  if (!userProfile || !userProfile.name || userProfile.emailVerified === false) {
     return <Navigate to="/auth" replace />;
   }
   return <Outlet />;

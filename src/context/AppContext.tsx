@@ -13,6 +13,7 @@ interface UserProfile {
   email: string;
   picture?: string;
   idToken?: string;
+  emailVerified?: boolean;
 }
 
 interface AppContextType {
@@ -114,6 +115,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Google User',
           email: firebaseUser.email || '',
           picture: firebaseUser.photoURL || '',
+          emailVerified: firebaseUser.emailVerified,
         };
         setUserProfileState(profile);
         localStorage.setItem('distrack_user', JSON.stringify(profile));
