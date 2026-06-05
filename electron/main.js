@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { Store } from './store.js';
 import { AppTracker } from './tracker.js';
 import { AppBlocker } from './blocker.js';
+import { autoUpdater } from 'electron-updater';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -393,6 +394,11 @@ app.whenReady().then(() => {
   setupIPC();
   createWindow();
   createTray();
+
+  // Check for updates and notify user dynamically
+  autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+    console.error('[Main] Update check error:', err);
+  });
 });
 
 app.on('activate', () => {
