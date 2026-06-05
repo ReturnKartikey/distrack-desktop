@@ -33,7 +33,9 @@ export default function TopBar() {
             className="w-10 h-10 flex items-center justify-center rounded-full border border-outline-variant bg-surface hover:bg-surface-bright cursor-pointer transition-colors"
             onClick={() => setProfileOpen(!profileOpen)}
           >
-            {userProfile.name ? (
+            {userProfile.picture ? (
+              <img src={userProfile.picture} alt={displayName} className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+            ) : userProfile.name ? (
               <span className="text-primary text-sm font-bold uppercase">{userProfile.name.charAt(0)}</span>
             ) : (
               <span className="material-symbols-outlined text-primary text-[20px]">person</span>

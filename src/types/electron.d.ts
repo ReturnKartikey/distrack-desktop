@@ -36,8 +36,19 @@ export interface ElectronAPI {
   isOnboarded: () => Promise<boolean>;
   setOnboarded: () => Promise<boolean>;
 
+  // User Profile
+  getUserProfile: () => Promise<UserProfile>;
+  setUserProfile: (profile: UserProfile) => Promise<boolean>;
+  googleSignIn: () => Promise<UserProfile>;
+
   // Process control
   killProcess: (processName: string) => Promise<boolean>;
+}
+
+export interface UserProfile {
+  name: string;
+  email: string;
+  picture?: string;
 }
 
 export interface DailyTotal {

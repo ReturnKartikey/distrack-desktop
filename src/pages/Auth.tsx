@@ -21,13 +21,38 @@ export default function Auth() {
     }
   }, [userProfile, navigate]);
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
     setIsConnecting(true);
     setFeedback(null);
-    setTimeout(() => {
-      setUserProfile({ name: 'Kartikey', email: 'kartikey@gmail.com' });
-      navigate('/');
-    }, 1500);
+    try {
+      if (window.electronAPI && window.electronAPI.googleSignIn) {
+        const profile = await window.electronAPI.googleSignIn();
+        setUserProfile(profile);
+        navigate('/');
+      } else {
+        // Fallback for browser testing/development
+        console.log('[Auth] Google Sign-In running in fallback mode');
+        setTimeout(() => {
+          setUserProfile({ name: 'Kartikey', email: 'kartikey@gmail.com' });
+          navigate('/');
+        }, 1500);
+      }
+    } catch (err: any) {
+      console.error('[Auth] Google Sign-In failed:', err);
+      let errMsg = 'Google Sign-in failed. Please try again.';
+      if (err && err.message) {
+        if (err.message.includes('Google Client ID is not configured')) {
+          errMsg = 'Google Client ID is not configured. Please add GOOGLE_CLIENT_ID to .env.local and restart the app.';
+        } else {
+          errMsg = `Sign-in Error: ${err.message}`;
+        }
+      }
+      setFeedback({
+        type: 'error',
+        message: errMsg
+      });
+      setIsConnecting(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {

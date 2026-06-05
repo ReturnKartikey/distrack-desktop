@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // -- User Profile --
   getUserProfile: () => ipcRenderer.invoke('get-user-profile'),
   setUserProfile: (profile) => ipcRenderer.invoke('set-user-profile', profile),
+  googleSignIn: () => ipcRenderer.invoke('google-sign-in'),
 
   // -- Process control --
   killProcess: (processName) => ipcRenderer.invoke('kill-process', processName),

@@ -7,3 +7,4 @@ coverage/
 .env*
 !.env.example
 release/
+client_secret_*.json

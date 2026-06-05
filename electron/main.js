@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage, shell } from 'electron';
 import path from 'path';
 import { exec, execFile } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -6,9 +6,42 @@ import { Store } from './store.js';
 import { AppTracker } from './tracker.js';
 import { AppBlocker } from './blocker.js';
 import { autoUpdater } from 'electron-updater';
+import fs from 'fs';
+import http from 'http';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load environment variables from .env.local or .env
+function loadEnv() {
+  const envFiles = ['.env.local', '.env'];
+  for (const file of envFiles) {
+    const envPath = path.join(__dirname, '..', file);
+    if (fs.existsSync(envPath)) {
+      try {
+        const content = fs.readFileSync(envPath, 'utf8');
+        content.split('\n').forEach(line => {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith('#')) {
+            const parts = trimmed.split('=');
+            if (parts.length >= 2) {
+              const key = parts[0].trim();
+              let val = parts.slice(1).join('=').trim();
+              if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+              if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
+              process.env[key] = val;
+            }
+          }
+        });
+        console.log(`[Main] Loaded environment from ${file}`);
+        break;
+      } catch (err) {
+        console.error(`[Main] Failed to load ${file}:`, err.message);
+      }
+    }
+  }
+}
+loadEnv();
 
 let mainWindow = null;
 let tray = null;
@@ -50,7 +83,7 @@ const STORE_DEFAULTS = {
   focusSessions: [],
   blocklist: [],
   onboarded: false,
-  userProfile: { name: '', email: '' },
+  userProfile: { name: '', email: '', picture: '' },
 };
 
 // ── Window creation ───────────────────────────────────────────
@@ -369,7 +402,7 @@ function setupIPC() {
   ipcMain.handle('set-onboarded', () => { store.set('onboarded', true); return true; });
 
   // -- User Profile --
-  ipcMain.handle('get-user-profile', () => store.get('userProfile', { name: '', email: '' }));
+  ipcMain.handle('get-user-profile', () => store.get('userProfile', { name: '', email: '', picture: '' }));
   ipcMain.handle('set-user-profile', (_, profile) => {
     store.set('userProfile', profile);
     return true;
@@ -383,6 +416,116 @@ function setupIPC() {
           console.error(`[Main] Failed to kill ${processName}:`, err.message);
         }
         resolve(!err);
+      });
+    });
+  });
+
+  // -- Google Sign-In --
+  ipcMain.handle('google-sign-in', async () => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+    if (!clientId) {
+      throw new Error('Google Client ID is not configured. Please add GOOGLE_CLIENT_ID to .env.local.');
+    }
+
+    return new Promise((resolve, reject) => {
+      let port = 0;
+      const server = http.createServer(async (req, res) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`);
+        const code = urlObj.searchParams.get('code');
+        const error = urlObj.searchParams.get('error');
+
+        if (error) {
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end(getAuthResponsePage(false, `Authentication error: ${error}`));
+          reject(new Error(error));
+          server.close();
+          return;
+        }
+
+        if (!code) {
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end(getAuthResponsePage(false, 'Authorization code not found.'));
+          reject(new Error('No authorization code returned'));
+          server.close();
+          return;
+        }
+
+        // Send a pretty success page immediately
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(getAuthResponsePage(true));
+
+        // Exchange authorization code for tokens
+        try {
+          const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              code,
+              client_id: clientId,
+              client_secret: clientSecret || '',
+              redirect_uri: `http://localhost:${port}`,
+              grant_type: 'authorization_code',
+            }),
+          });
+
+          if (!tokenResponse.ok) {
+            const errData = await tokenResponse.json();
+            throw new Error(errData.error_description || errData.error || 'Failed to exchange authorization code');
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+
+          // Fetch user profile info
+          const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+
+          if (!userResponse.ok) {
+            throw new Error('Failed to fetch user profile details from Google');
+          }
+
+          const userData = await userResponse.json();
+
+          const profile = {
+            name: userData.name || userData.given_name || 'Google User',
+            email: userData.email,
+            picture: userData.picture || '',
+          };
+
+          // Save profile in store
+          store.set('userProfile', profile);
+          resolve(profile);
+        } catch (err) {
+          reject(err);
+        } finally {
+          server.close();
+        }
+      });
+
+      // Bind to 127.0.0.1 on port 0 to let the OS assign any free port
+      server.listen(0, '127.0.0.1', () => {
+        port = server.address().port;
+        console.log(`[Auth] Google OAuth loopback server listening on port ${port}`);
+
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
+          client_id: clientId,
+          redirect_uri: `http://localhost:${port}`,
+          response_type: 'code',
+          scope: 'openid profile email',
+          prompt: 'select_account'
+        }).toString();
+
+        shell.openExternal(authUrl).catch(err => {
+          reject(new Error(`Failed to open default web browser: ${err.message}`));
+          server.close();
+        });
+      });
+
+      server.on('error', (err) => {
+        reject(err);
       });
     });
   });
@@ -416,3 +559,139 @@ app.on('before-quit', () => {
   if (blocker) blocker.stop();
   if (store) store.saveSync();
 });
+
+// Helper function to return a beautiful HTML page for Google Sign-in feedback
+function getAuthResponsePage(success, errorMessage = '') {
+  const title = success ? 'Sign In Successful' : 'Sign In Failed';
+  const subtitle = success 
+    ? 'You have successfully signed in to Distrack. You can safely close this tab and return to the desktop app.' 
+    : `An error occurred: ${errorMessage}. Please close this tab and try again in the app.`;
+  const icon = success 
+    ? `<div class="success-icon">✓</div>` 
+    : `<div class="error-icon">✗</div>`;
+  const iconColor = success ? '#10B981' : '#EF4444';
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${title}</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Playfair+Display:ital,wght@1,400;1,700&display=swap');
+        
+        body {
+          margin: 0;
+          padding: 0;
+          background-color: #0A0A0A;
+          color: #E2E8F0;
+          font-family: 'Inter', sans-serif;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          overflow: hidden;
+        }
+
+        .ambient-bg {
+          position: absolute;
+          top: 25%;
+          left: 25%;
+          width: 400px;
+          height: 400px;
+          background: radial-gradient(circle, rgba(212, 175, 55, 0.05) 0%, rgba(0,0,0,0) 70%);
+          filter: blur(50px);
+          pointer-events: none;
+          z-index: 1;
+        }
+
+        .card {
+          background-color: #121212;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          padding: 3rem;
+          max-width: 450px;
+          width: 90%;
+          text-align: center;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+          position: relative;
+          z-index: 10;
+        }
+
+        .logo-text {
+          font-family: 'Playfair Display', serif;
+          font-style: italic;
+          font-size: 2.25rem;
+          margin-bottom: 2rem;
+          color: #E2E8F0;
+          letter-spacing: -0.02em;
+        }
+
+        .icon-wrapper {
+          width: 64px;
+          height: 64px;
+          margin: 0 auto 2rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          font-size: 2rem;
+          font-weight: bold;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .success-icon {
+          color: ${iconColor};
+        }
+
+        .error-icon {
+          color: ${iconColor};
+        }
+
+        h1 {
+          font-family: 'Playfair Display', serif;
+          font-weight: 400;
+          font-size: 1.5rem;
+          margin-bottom: 1rem;
+          color: #E2E8F0;
+        }
+
+        p {
+          font-size: 0.875rem;
+          line-height: 1.6;
+          color: #94A3B8;
+          margin-bottom: 2rem;
+        }
+
+        .footer {
+          font-size: 0.65rem;
+          text-transform: uppercase;
+          letter-spacing: 0.3em;
+          color: #64748B;
+          font-weight: 700;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="ambient-bg"></div>
+      <div class="card">
+        <div class="logo-text">Distrack</div>
+        <div class="icon-wrapper">
+          ${icon}
+        </div>
+        <h1>${title}</h1>
+        <p>${subtitle}</p>
+        <div class="footer">Digital Mindfulness</div>
+      </div>
+      <script>
+        if (${success}) {
+          setTimeout(() => {
+            window.close();
+          }, 5000);
+        }
+      </script>
+    </body>
+    </html>
+  `;
+}
