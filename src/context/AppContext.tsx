@@ -111,16 +111,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (firebaseUser) {
+        // Read local storage to see if we already verified this user
+        let isLocallyVerified = false;
+        try {
+          const saved = localStorage.getItem('distrack_user');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.email === firebaseUser.email && parsed.emailVerified === true) {
+              isLocallyVerified = true;
+            }
+          }
+        } catch {}
+
         const profile = {
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Google User',
           email: firebaseUser.email || '',
           picture: firebaseUser.photoURL || '',
-          emailVerified: firebaseUser.emailVerified,
+          emailVerified: isLocallyVerified || firebaseUser.emailVerified,
         };
         setUserProfileState(profile);
         localStorage.setItem('distrack_user', JSON.stringify(profile));
         if (isElectron) {
           window.electronAPI!.setUserProfile(profile);
+        }
+
+        // If the user is not verified yet, check if their status has changed on the server
+        if (!profile.emailVerified) {
+          firebaseUser.reload().then(() => {
+            if (auth.currentUser?.emailVerified) {
+              const updatedProfile = {
+                ...profile,
+                emailVerified: true
+              };
+              setUserProfileState(updatedProfile);
+              localStorage.setItem('distrack_user', JSON.stringify(updatedProfile));
+              if (isElectron) {
+                window.electronAPI!.setUserProfile(updatedProfile);
+              }
+            }
+          }).catch(console.error);
         }
 
         // Subscribe to Firestore document updates
