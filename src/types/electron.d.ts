@@ -21,6 +21,9 @@ export interface ElectronAPI {
   stopFocusSession: () => Promise<boolean>;
   getFocusActive: () => Promise<boolean>;
   onAppBlocked: (callback: (name: string) => void) => () => void;
+  onAppCloseWarning: (callback: (name: string) => void) => () => void;
+  onAppCloseWarningCancelled: (callback: (name: string) => void) => () => void;
+  onAppBlockFailedPrivilege: (callback: (name: string) => void) => () => void;
 
   // Blocklist
   getBlocklist: () => Promise<string[]>;

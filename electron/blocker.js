@@ -89,6 +89,11 @@ export class AppBlocker {
           if (entry.timer) clearTimeout(entry.timer);
           this.pendingCloses.delete(procName);
           console.log(`[Blocker] ${procName} was closed by user, removed from pending list`);
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            try {
+              this.mainWindow.webContents.send('app-close-warning-cancelled', procName);
+            } catch (e) { /* ignore */ }
+          }
         }
       }
 

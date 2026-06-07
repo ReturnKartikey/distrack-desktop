@@ -135,8 +135,8 @@ export default function Dashboard() {
                   <h3 className="font-serif text-xl">Usage Trends</h3>
                   <span className="text-[10px] border border-outline px-2 py-0.5 text-on-surface-variant uppercase">7-Day History</span>
               </div>
-              <div className="flex-1 min-h-0 w-full mb-2">
-                <ResponsiveContainer width="100%" height="100%">
+              <div className="flex-1 min-h-[180px] w-full mb-2">
+                <ResponsiveContainer width="100%" height={180}>
                     <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
                         <RechartsTooltip
                           cursor={{fill: '#262626'}}

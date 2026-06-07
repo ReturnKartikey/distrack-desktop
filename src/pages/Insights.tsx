@@ -47,8 +47,8 @@ export default function Insights() {
             <h3 className="font-serif text-xl mb-2">Time Distribution</h3>
             {pieData.length > 0 ? (
               <div className="flex-1 flex flex-col justify-between min-h-0">
-                <div className="flex-1 min-h-0 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="flex-1 min-h-[200px] w-full">
+                  <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
                       <Pie data={pieData} cx="50%" cy="50%" innerRadius="55%" outerRadius="80%" paddingAngle={2} dataKey="value" stroke="none">
                         {pieData.map((entry, index) => (
