@@ -139,10 +139,22 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height={180}>
                     <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
                         <RechartsTooltip
-                          cursor={{fill: '#262626'}}
-                          contentStyle={{backgroundColor: '#141414', border: '1px solid #262626', borderRadius: '0px', color: '#fff', fontFamily: 'monospace', fontSize: '12px'}}
+                          cursor={{ fill: 'var(--outline-variant)', opacity: 0.5 }}
+                          contentStyle={{
+                            backgroundColor: 'var(--surface)',
+                            border: '1px solid var(--outline-variant)',
+                            borderRadius: '0px',
+                            color: 'var(--on-surface)',
+                            fontFamily: 'monospace',
+                            fontSize: '12px'
+                          }}
+                          itemStyle={{
+                            color: 'var(--on-surface)',
+                            fontFamily: 'monospace',
+                            fontSize: '12px'
+                          }}
                           formatter={(value: number) => [`${value}h`, 'Screen Time']}
-                          labelStyle={{color: '#a3a3a3', marginBottom: '4px'}}
+                          labelStyle={{ color: 'var(--on-surface)', marginBottom: '4px', opacity: 0.7 }}
                         />
                         <Bar dataKey="value" radius={[0, 0, 0, 0]}>
                              {chartData.map((_, index) => (
