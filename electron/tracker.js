@@ -266,14 +266,26 @@ export class AppTracker {
   }
 
   getDailyTotals() {
-    const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const today = new Date();
+    const day = today.getDay();
+    const monday = new Date(today);
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+    monday.setDate(diff);
+
+    const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
     const totals = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
       const dateKey = d.toISOString().split('T')[0];
       const dayData = this.store.get(`usageData.${dateKey}`, {});
       const totalHours = Object.values(dayData).reduce((s, a) => s + (a.totalSeconds || 0), 0) / 3600;
-      totals.push({ day: days[d.getDay()], label: days[d.getDay()], value: Math.round(totalHours * 10) / 10, date: dateKey });
+      totals.push({
+        day: days[i],
+        label: days[i],
+        value: Math.round(totalHours * 10) / 10,
+        date: dateKey
+      });
     }
     return totals;
   }

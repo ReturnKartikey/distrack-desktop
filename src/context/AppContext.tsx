@@ -218,16 +218,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Seed mock data for browser presentation mode
       setApps(initialApps);
       
-      const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-      const mockValues = [1.0, 3.5, 4.2, 2.8, 5.1, 3.0, 1.1];
+      const today = new Date();
+      const day = today.getDay();
+      const monday = new Date(today);
+      const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+      monday.setDate(diff);
+
+      const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+      const mockValues = [3.5, 4.2, 2.8, 5.1, 3.0, 1.1, 1.0];
       const totals: DailyTotal[] = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate() - i);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
         const dateKey = d.toISOString().split('T')[0];
-        const val = mockValues[d.getDay() % mockValues.length];
+        const val = mockValues[i];
         totals.push({
-          day: days[d.getDay()],
-          label: days[d.getDay()],
+          day: days[i],
+          label: days[i],
           value: val,
           date: dateKey
         });
