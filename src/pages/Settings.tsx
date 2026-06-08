@@ -3,6 +3,18 @@ import { useAppContext } from '../context/AppContext';
 
 export default function Settings() {
   const { settings, updateSettings, clearData, isElectron } = useAppContext();
+  const [isThemeDropdownOpen, setIsThemeDropdownOpen] = React.useState(false);
+  const themeDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (themeDropdownRef.current && !themeDropdownRef.current.contains(event.target as Node)) {
+        setIsThemeDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <div className="p-6 lg:p-10 max-w-4xl mx-auto w-full lg:h-full lg:overflow-hidden lg:flex lg:flex-col pb-24 lg:pb-10 space-y-6">
@@ -21,15 +33,40 @@ export default function Settings() {
                 <p className="text-sm font-sans tracking-wide text-primary">Appearance</p>
                 <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">Select your preferred theme</p>
               </div>
-              <select
-                value={settings.theme}
-                onChange={(e) => updateSettings({ theme: e.target.value })}
-                className="bg-surface border border-outline-variant px-4 py-2 text-xs uppercase tracking-widest font-bold text-primary outline-none cursor-pointer"
-              >
-                <option value="system">System</option>
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
-              </select>
+              <div className="relative inline-block text-left" ref={themeDropdownRef}>
+                <button
+                  onClick={() => setIsThemeDropdownOpen(!isThemeDropdownOpen)}
+                  className="flex items-center justify-between gap-3 bg-surface border border-outline-variant px-4 py-2 text-xs uppercase tracking-widest font-bold text-primary outline-none cursor-pointer min-w-[120px]"
+                >
+                  <span className="capitalize">{settings.theme}</span>
+                  <span className={`material-symbols-outlined text-[14px] transition-transform duration-300 ${isThemeDropdownOpen ? 'rotate-180' : ''}`}>
+                    keyboard_arrow_down
+                  </span>
+                </button>
+
+                {isThemeDropdownOpen && (
+                  <div className="absolute right-0 mt-1 w-full bg-surface border border-outline-variant shadow-xl z-50 py-1 rounded-none animate-fadeIn">
+                    <button
+                      onClick={() => { updateSettings({ theme: 'system' }); setIsThemeDropdownOpen(false); }}
+                      className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors hover:bg-surface-bright ${settings.theme === 'system' ? 'text-primary bg-surface-bright/50' : 'text-primary/60 hover:text-primary'}`}
+                    >
+                      System
+                    </button>
+                    <button
+                      onClick={() => { updateSettings({ theme: 'dark' }); setIsThemeDropdownOpen(false); }}
+                      className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors hover:bg-surface-bright ${settings.theme === 'dark' ? 'text-primary bg-surface-bright/50' : 'text-primary/60 hover:text-primary'}`}
+                    >
+                      Dark
+                    </button>
+                    <button
+                      onClick={() => { updateSettings({ theme: 'light' }); setIsThemeDropdownOpen(false); }}
+                      className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors hover:bg-surface-bright ${settings.theme === 'light' ? 'text-primary bg-surface-bright/50' : 'text-primary/60 hover:text-primary'}`}
+                    >
+                      Light
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="w-full h-[1px] bg-outline-variant"></div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
 
 const quotes = [
@@ -30,6 +30,18 @@ export default function FocusMode() {
   const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
   const [initialDuration, setInitialDuration] = useState(25 * 60);
   const [selectedMode, setSelectedMode] = useState('Deep Silence');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const quoteInterval = setInterval(() => {
@@ -186,16 +198,40 @@ export default function FocusMode() {
                 {timerMode === 'pomodoro' ? `Phase: ${pomodoroState.toUpperCase()}` : 'Mode:'}
               </span>
               {timerMode === 'classic' && !isFocusModeActive ? (
-                <select
-                  value={selectedMode}
-                  onChange={(e) => setSelectedMode(e.target.value)}
-                  className="bg-transparent border-b border-primary text-[10px] font-bold uppercase tracking-[0.2em] outline-none cursor-pointer text-center text-primary"
-                  style={{ MozAppearance: 'none', WebkitAppearance: 'none' } as React.CSSProperties}
-                >
-                  <option value="Deep Silence">DEEP SILENCE</option>
-                  <option value="Light Focus">LIGHT FOCUS</option>
-                  <option value="Strict Lock">STRICT LOCK</option>
-                </select>
+                <div className="relative inline-block" ref={dropdownRef}>
+                  <button
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    className="flex items-center gap-1 bg-transparent border-b border-primary pb-0.5 text-[10px] font-bold uppercase tracking-[0.2em] outline-none cursor-pointer text-primary"
+                  >
+                    <span>{selectedMode}</span>
+                    <span className={`material-symbols-outlined text-[12px] transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`}>
+                      keyboard_arrow_down
+                    </span>
+                  </button>
+
+                  {isDropdownOpen && (
+                    <div className="absolute left-1/2 -translate-x-1/2 mt-1.5 w-44 bg-surface border border-outline-variant shadow-xl z-50 py-1 rounded-none animate-fadeIn">
+                      <button
+                        onClick={() => { setSelectedMode('Deep Silence'); setIsDropdownOpen(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-[9px] font-bold uppercase tracking-[0.2em] transition-colors hover:bg-surface-bright ${selectedMode === 'Deep Silence' ? 'text-primary bg-surface-bright/50' : 'text-primary/60 hover:text-primary'}`}
+                      >
+                        DEEP SILENCE
+                      </button>
+                      <button
+                        onClick={() => { setSelectedMode('Light Focus'); setIsDropdownOpen(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-[9px] font-bold uppercase tracking-[0.2em] transition-colors hover:bg-surface-bright ${selectedMode === 'Light Focus' ? 'text-primary bg-surface-bright/50' : 'text-primary/60 hover:text-primary'}`}
+                      >
+                        LIGHT FOCUS
+                      </button>
+                      <button
+                        onClick={() => { setSelectedMode('Strict Lock'); setIsDropdownOpen(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-[9px] font-bold uppercase tracking-[0.2em] transition-colors hover:bg-surface-bright ${selectedMode === 'Strict Lock' ? 'text-primary bg-surface-bright/50' : 'text-primary/60 hover:text-primary'}`}
+                      >
+                        STRICT LOCK
+                      </button>
+                    </div>
+                  )}
+                </div>
               ) : timerMode === 'classic' ? (
                 <span className="text-[10px] font-bold uppercase tracking-[0.2em]">{selectedMode}</span>
               ) : null}
