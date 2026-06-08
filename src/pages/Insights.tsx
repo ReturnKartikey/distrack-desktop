@@ -34,34 +34,32 @@ export default function Insights() {
     .slice(0, 3);
 
   return (
-    <div className="p-6 lg:p-10 w-full max-w-7xl mx-auto pb-24 lg:pb-10 lg:h-full lg:overflow-hidden lg:flex lg:flex-col gap-6 lg:gap-8">
+    <div className="p-6 lg:p-10 w-full max-w-7xl mx-auto pb-24 lg:pb-10 flex flex-col gap-6 lg:gap-8">
       <header className="mb-2 flex-shrink-0">
         <h1 className="text-2xl font-serif tracking-tight text-primary mb-2">Deep Insights</h1>
         <p className="text-xs font-sans text-on-surface-variant uppercase tracking-wider">Analyze your digital habits</p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Left Column: Time Distribution & Session History */}
-        <div className="col-span-1 min-w-0 flex flex-col gap-6 lg:gap-8 lg:h-full lg:overflow-hidden">
-          <div className="glass-card p-6 flex flex-col lg:flex-[3] lg:min-h-0">
+        <div className="col-span-1 min-w-0 flex flex-col gap-6 lg:gap-8">
+          <div className="glass-card p-6 flex flex-col min-h-[320px]">
             <h3 className="font-serif text-xl mb-2">Time Distribution</h3>
             {pieData.length > 0 ? (
-              <div className="flex-1 flex flex-col justify-between min-h-0">
-                <div className="flex-1 min-h-[200px] w-full">
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie data={pieData} cx="50%" cy="50%" innerRadius="55%" outerRadius="80%" paddingAngle={2} dataKey="value" stroke="none">
-                        {pieData.map((entry, index) => (
-                           <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value: number) => formatTime(value)}
-                        contentStyle={{ backgroundColor: 'var(--surface)', borderColor: 'var(--outline-variant)', borderRadius: '0', color: 'var(--on-surface)' }}
-                        itemStyle={{ color: 'var(--on-surface)', fontFamily: 'monospace', fontSize: '12px' }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+              <div className="flex-1 flex flex-col justify-between">
+                <div className="flex-grow flex items-center justify-center min-h-[200px] py-2">
+                  <PieChart width={200} height={200}>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius="55%" outerRadius="80%" paddingAngle={2} dataKey="value" stroke="none">
+                      {pieData.map((entry, index) => (
+                         <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number) => formatTime(value)}
+                      contentStyle={{ backgroundColor: 'var(--surface)', borderColor: 'var(--outline-variant)', borderRadius: '0', color: 'var(--on-surface)' }}
+                      itemStyle={{ color: 'var(--on-surface)', fontFamily: 'monospace', fontSize: '12px' }}
+                    />
+                  </PieChart>
                 </div>
                 <div className="flex justify-center flex-wrap gap-x-6 gap-y-2 mt-2 pb-1 flex-shrink-0 select-none">
                   {pieData.map((entry, index) => (
@@ -84,7 +82,7 @@ export default function Insights() {
             )}
           </div>
 
-          <div className="glass-card p-6 lg:flex-[4] lg:min-h-0 flex flex-col overflow-hidden">
+          <div className="glass-card p-6 flex flex-col min-h-[380px] overflow-hidden">
             <h3 className="font-serif text-xl mb-4">Focus Session History</h3>
             {!focusSessions || focusSessions.length === 0 ? (
               <div className="text-center py-6 opacity-50 flex-1 flex flex-col justify-center">
@@ -123,8 +121,8 @@ export default function Insights() {
         </div>
 
         {/* Right Column: Top Productive Pillars & Major Distractions */}
-        <div className="col-span-1 min-w-0 flex flex-col gap-6 lg:gap-8 lg:h-full lg:overflow-hidden">
-          <div className="glass-card p-6 lg:flex-1 lg:min-h-0 flex flex-col overflow-hidden">
+        <div className="col-span-1 min-w-0 flex flex-col gap-6 lg:gap-8">
+          <div className="glass-card p-6 flex flex-col min-h-[320px] overflow-hidden">
             <h3 className="font-serif text-xl mb-4">Top Productive Pillars</h3>
             <div className="flex flex-col gap-3 lg:gap-4 overflow-y-auto pr-1 flex-1">
               {productiveApps.length > 0 ? productiveApps.map((app, index) => (
@@ -149,7 +147,7 @@ export default function Insights() {
             </div>
           </div>
 
-          <div className="glass-card p-6 lg:flex-1 lg:min-h-0 border-error/50 relative overflow-hidden flex flex-col">
+          <div className="glass-card p-6 border-error/50 relative overflow-hidden flex flex-col min-h-[380px]">
              <div className="absolute top-0 right-0 w-32 h-32 bg-error/5 blur-3xl rounded-full pointer-events-none"></div>
             <h3 className="font-serif text-xl mb-4 text-error flex-shrink-0">Major Distractions</h3>
             <div className="flex flex-col gap-3 lg:gap-4 overflow-y-auto pr-1 flex-1 relative z-10">

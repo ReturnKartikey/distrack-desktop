@@ -145,7 +145,7 @@ export default function FocusMode() {
   };
 
   return (
-    <div className="p-4 lg:p-6 max-w-7xl mx-auto w-full lg:h-full lg:overflow-hidden lg:flex lg:flex-col pb-20 lg:pb-6 space-y-4">
+    <div className="p-4 lg:p-6 max-w-7xl mx-auto w-full pb-20 lg:pb-6 space-y-4">
       <header className="mb-2 flex-shrink-0">
         <h1 className="text-2xl font-serif tracking-tight text-primary mb-2">Deep Work Session</h1>
         <p className="text-xs font-sans text-on-surface-variant uppercase tracking-wider">
@@ -153,9 +153,9 @@ export default function FocusMode() {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* ── Timer Panel (White) ── */}
-        <div className={`lg:col-span-2 bg-surface text-primary p-6 lg:p-8 flex flex-col items-center justify-between lg:h-full relative overflow-hidden transition-all duration-1000 border ${
+        <div className={`lg:col-span-2 bg-surface text-primary p-6 lg:p-8 flex flex-col items-center justify-between relative overflow-hidden transition-all duration-1000 border min-h-[520px] ${
           !isFocusModeActive 
             ? 'border-outline-variant shadow-lg' 
             : timerMode === 'pomodoro' && pomodoroState === 'break'
@@ -253,71 +253,75 @@ export default function FocusMode() {
               )}
             </div>
 
-            {/* Timer Display */}
-            <div className="relative w-48 h-48 lg:w-52 lg:h-52 flex items-center justify-center mb-4 flex-shrink-0">
-              {/* Circular SVG Progress Ring */}
-              <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 200 200">
-                {/* Track Circle */}
-                <circle
-                  cx="100"
-                  cy="100"
-                  r="90"
-                  stroke="var(--outline-variant)"
-                  strokeWidth="4"
-                  fill="none"
-                />
-                {/* Progress Circle */}
-                <circle
-                  cx="100"
-                  cy="100"
-                  r="90"
-                  stroke={
-                    !isFocusModeActive
-                      ? 'var(--primary)'
-                      : timerMode === 'pomodoro' && pomodoroState === 'break'
-                      ? '#10b981'
-                      : '#f43f5e'
-                  }
-                  strokeWidth="6"
-                  fill="none"
-                  strokeDasharray="565.48"
-                  strokeDashoffset={initialDuration > 0 ? 565.48 - (565.48 * timeLeft) / initialDuration : 0}
-                  className="transition-all duration-1000 ease-out"
-                  strokeLinecap="round"
-                />
-              </svg>
+            {/* Timer Display Flanked by Buttons */}
+            <div className="flex items-center gap-6 mb-6 flex-shrink-0 select-none">
+              <button
+                onClick={() => adjustTime(-5)}
+                className={`p-2 opacity-40 hover:opacity-100 text-primary transition-all duration-300 ${isFocusModeActive ? 'opacity-0 pointer-events-none' : ''}`}
+                title="Decrease Time"
+              >
+                <span className="material-symbols-outlined text-2xl">remove</span>
+              </button>
 
-              <div className="absolute inset-0 z-10 flex items-center justify-center">
-                <button
-                  onClick={() => adjustTime(-5)}
-                  className={`absolute left-2 lg:left-4 top-1/2 -translate-y-1/2 p-2 opacity-30 hover:opacity-100 text-primary transition-all duration-300 ${isFocusModeActive ? 'invisible pointer-events-none' : ''}`}
-                  title="Decrease Time"
-                >
-                  <span className="material-symbols-outlined text-xl lg:text-2xl">remove</span>
-                </button>
-                {isEditingTime ? (
-                  <input type="text" autoFocus value={tempTimeInput}
-                    onChange={(e) => setTempTimeInput(e.target.value)}
-                    onBlur={handleTimeInputSubmit}
-                    onKeyDown={handleTimeInputKeyDown}
-                    className="text-3xl lg:text-5xl font-mono tracking-tighter text-center bg-transparent border-b-2 border-primary outline-none w-24 lg:w-32"
+              {/* Circular SVG Progress Ring */}
+              <div className="relative w-48 h-48 lg:w-52 lg:h-52 flex items-center justify-center">
+                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 200 200">
+                  {/* Track Circle */}
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r="90"
+                    stroke="var(--outline-variant)"
+                    strokeWidth="4"
+                    fill="none"
                   />
-                ) : (
-                  <span
-                    onClick={() => { if (isFocusModeActive) return; setTempTimeInput(formatTimer(timeLeft)); setIsEditingTime(true); }}
-                    className={`text-3xl lg:text-5xl font-mono tracking-tighter transition-opacity duration-300 ${!isFocusModeActive ? 'cursor-pointer hover:opacity-100' : ''} ${isFocusModeActive ? 'opacity-100' : 'opacity-80'}`}
-                  >
-                    {formatTimer(timeLeft)}
-                  </span>
-                )}
-                <button
-                  onClick={() => adjustTime(5)}
-                  className={`absolute right-2 lg:right-4 top-1/2 -translate-y-1/2 p-2 opacity-30 hover:opacity-100 text-primary transition-all duration-300 ${isFocusModeActive ? 'invisible pointer-events-none' : ''}`}
-                  title="Increase Time"
-                >
-                  <span className="material-symbols-outlined text-xl lg:text-2xl">add</span>
-                </button>
+                  {/* Progress Circle */}
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r="90"
+                    stroke={
+                      !isFocusModeActive
+                        ? 'var(--primary)'
+                        : timerMode === 'pomodoro' && pomodoroState === 'break'
+                        ? '#10b981'
+                        : '#f43f5e'
+                    }
+                    strokeWidth="6"
+                    fill="none"
+                    strokeDasharray="565.48"
+                    strokeDashoffset={initialDuration > 0 ? 565.48 - (565.48 * timeLeft) / initialDuration : 0}
+                    className="transition-all duration-1000 ease-out"
+                    strokeLinecap="round"
+                  />
+                </svg>
+
+                <div className="absolute inset-0 z-10 flex items-center justify-center">
+                  {isEditingTime ? (
+                    <input type="text" autoFocus value={tempTimeInput}
+                      onChange={(e) => setTempTimeInput(e.target.value)}
+                      onBlur={handleTimeInputSubmit}
+                      onKeyDown={handleTimeInputKeyDown}
+                      className="text-3xl lg:text-4xl font-mono tracking-tighter text-center bg-transparent border-b-2 border-primary outline-none w-24 lg:w-28"
+                    />
+                  ) : (
+                    <span
+                      onClick={() => { if (isFocusModeActive) return; setTempTimeInput(formatTimer(timeLeft)); setIsEditingTime(true); }}
+                      className={`text-3xl lg:text-4xl font-mono tracking-tighter transition-opacity duration-300 ${!isFocusModeActive ? 'cursor-pointer hover:opacity-100' : ''} ${isFocusModeActive ? 'opacity-100' : 'opacity-80'}`}
+                    >
+                      {formatTimer(timeLeft)}
+                    </span>
+                  )}
+                </div>
               </div>
+
+              <button
+                onClick={() => adjustTime(5)}
+                className={`p-2 opacity-40 hover:opacity-100 text-primary transition-all duration-300 ${isFocusModeActive ? 'opacity-0 pointer-events-none' : ''}`}
+                title="Increase Time"
+              >
+                <span className="material-symbols-outlined text-2xl">add</span>
+              </button>
             </div>
 
             {/* Controls */}
@@ -340,7 +344,7 @@ export default function FocusMode() {
         </div>
 
         {/* ── Blocklist Panel (Dark) ── */}
-        <div className="col-span-1 glass-card p-6 flex flex-col lg:h-full lg:overflow-hidden">
+        <div className="col-span-1 glass-card p-6 flex flex-col min-h-[520px]">
           <div className="flex justify-between items-center mb-6">
               <h3 className="font-serif text-xl">Blocklist</h3>
               <span className="text-[10px] border border-outline px-2 py-0.5 text-on-surface-variant uppercase">Restricted</span>

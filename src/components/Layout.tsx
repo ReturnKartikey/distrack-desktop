@@ -11,7 +11,7 @@ export default function Layout() {
       <Sidebar />
       <main className="flex-1 flex flex-col overflow-hidden">
         <TopBar />
-        <div className="flex-1 overflow-y-auto lg:overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-y-auto flex flex-col">
           <Outlet />
         </div>
       </main>

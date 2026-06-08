@@ -45,7 +45,7 @@ export default function Dashboard() {
   }, [focusSessions]);
 
   return (
-    <div className="p-6 lg:p-10 w-full max-w-7xl mx-auto pb-24 lg:pb-10 lg:h-full lg:overflow-hidden lg:flex lg:flex-col gap-6 lg:gap-8">
+    <div className="p-6 lg:p-10 w-full max-w-7xl mx-auto pb-24 lg:pb-10 flex flex-col gap-6 lg:gap-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-2 gap-4 flex-shrink-0">
         <div>
           <h2 className="text-2xl font-serif tracking-tight text-primary mb-1">Overview</h2>
@@ -69,8 +69,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
-        <section className="col-span-1 lg:col-span-8 min-w-0 flex flex-col gap-6 lg:gap-8 lg:h-full lg:overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <section className="col-span-1 lg:col-span-8 min-w-0 flex flex-col gap-6 lg:gap-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 h-auto lg:h-[210px] flex-shrink-0">
             <div className="glass-card p-6 flex flex-col justify-between h-auto lg:h-full relative overflow-hidden group hover:border-primary/30 transition-all duration-500">
               <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
@@ -160,7 +160,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        <section className="col-span-1 lg:col-span-4 min-w-0 flex flex-col gap-6 lg:gap-8 lg:h-full lg:overflow-hidden">
+        <section className="col-span-1 lg:col-span-4 min-w-0 flex flex-col gap-6 lg:gap-8">
           <div className="glass-card p-6 lg:flex-1 lg:min-h-0 flex flex-col overflow-hidden">
               <div className="flex justify-between items-center mb-4 flex-shrink-0">
                   <h3 className="font-serif text-xl">Top Apps</h3>
