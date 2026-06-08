@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { getTopDistractions, formatTime } from '../utils/logic';
-import { ResponsiveContainer, BarChart, Bar, Tooltip as RechartsTooltip, Cell } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, Tooltip as RechartsTooltip, Cell } from 'recharts';
 
 export default function Dashboard() {
   const { apps, focusScore, dailyTotals, timeframe, setTimeframe, focusSessions } = useAppContext();
@@ -18,13 +18,33 @@ export default function Dashboard() {
     .slice(0, 5);
 
   // Use real daily totals — they come from the tracker
-  const chartData = dailyTotals.length > 0 ? dailyTotals : [
-    { day: 'S', label: 'S', value: 0 }, { day: 'M', label: 'M', value: 0 },
-    { day: 'T', label: 'T', value: 0 }, { day: 'W', label: 'W', value: 0 },
-    { day: 'T', label: 'T', value: 0 }, { day: 'F', label: 'F', value: 0 },
-    { day: 'S', label: 'S', value: 0 },
-  ];
-  const todayIdx = chartData.length - 1;
+  const chartData = useMemo(() => {
+    if (dailyTotals.length > 0) return dailyTotals;
+    const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    const mockTotals = [];
+    const today = new Date();
+    const day = today.getDay();
+    const monday = new Date(today);
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+    monday.setDate(diff);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      mockTotals.push({
+        day: days[i],
+        label: days[i],
+        value: 0,
+        date: d.toISOString().split('T')[0]
+      });
+    }
+    return mockTotals;
+  }, [dailyTotals]);
+
+  const todayIdx = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const idx = chartData.findIndex(d => d.date === todayStr);
+    return idx >= 0 ? idx : chartData.length - 1;
+  }, [chartData]);
 
   // Compute peak flow period dynamically based on real focus sessions
   const peakFlow = useMemo(() => {
@@ -138,6 +158,7 @@ export default function Dashboard() {
               <div className="flex-1 min-h-[180px] w-full mb-2">
                 <ResponsiveContainer width="100%" height={180}>
                     <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                        <XAxis dataKey="date" hide />
                         <RechartsTooltip
                           cursor={{ fill: 'var(--outline-variant)', opacity: 0.5 }}
                           contentStyle={{
@@ -155,6 +176,16 @@ export default function Dashboard() {
                           }}
                           formatter={(value: number) => [`${value}h`, 'Screen Time']}
                           labelStyle={{ color: 'var(--on-surface)', marginBottom: '4px', opacity: 0.7 }}
+                          labelFormatter={(dateStr: string) => {
+                            if (!dateStr) return '';
+                            const parts = dateStr.split('-');
+                            if (parts.length !== 3) return dateStr;
+                            const year = parseInt(parts[0]);
+                            const month = parseInt(parts[1]) - 1;
+                            const day = parseInt(parts[2]);
+                            const date = new Date(year, month, day);
+                            return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+                          }}
                         />
                         <Bar dataKey="value" radius={[0, 0, 0, 0]}>
                              {chartData.map((_, index) => (
