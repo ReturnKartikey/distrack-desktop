@@ -3,12 +3,12 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyD4mACTCaXurvNsqOwRv38OEmUbjp8pbX8',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'distrack-8638a.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'distrack-8638a',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'distrack-8638a.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '617124199982',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:617124199982:web:75dafba1be40d9dca329bf',
 };
 
 // Check if firebase is configured

@@ -446,8 +446,8 @@ function setupIPC() {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
-    if (!clientId) {
-      throw new Error('Google Client ID is not configured. Please add GOOGLE_CLIENT_ID to .env.local.');
+    if (!clientId || !clientSecret) {
+      throw new Error('Google Client ID and Secret are not configured. Please add GOOGLE_CLIENT_ID to .env.local.');
     }
 
     return new Promise((resolve, reject) => {

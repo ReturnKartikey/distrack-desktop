@@ -2,6 +2,10 @@
 
 Distrack is a Minimalistic Windows desktop application designed for digital mindfulness. It helps you stay productive by tracking your real-time activity and providing powerful tools to manage your digital focus.
 
+[![Download Distrack](https://img.shields.io/badge/Download-Windows%20Installer%20(.exe)-blue?style=for-the-badge&logo=windows)](https://github.com/ReturnKartikey/distrack-desktop/releases/latest)
+
+> **Note on Windows Installation**: Because Distrack is an independent open-source release without a commercial signing certificate, Windows SmartScreen may display a prompt on first launch. Click **"More info"** and then **"Run anyway"** to complete setup.
+
 <img width="1919" height="909" alt="Dashboard" src="./screenshots/dashboard.png" />
 
 
