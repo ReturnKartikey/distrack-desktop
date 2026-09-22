@@ -1,6 +1,13 @@
 import { execFile } from 'child_process';
 import { Notification } from 'electron';
 
+const PROTECTED_PROCESSES = [
+  'electron', 'distrack', 'explorer', 'taskmgr', 'dwm', 'svchost',
+  'powershell', 'pwsh', 'cmd', 'conhost', 'antigravity', 'systemsettings',
+  'applicationframehost', 'shellexperiencehost', 'startmenuexperiencehost',
+  'runtimebroker', 'ctfmon', 'searchhost'
+];
+
 export class AppBlocker {
   constructor(store, mainWindow) {
     this.store = store;
@@ -33,8 +40,13 @@ export class AppBlocker {
   }
 
   clearPendingCloses() {
-    for (const [_, entry] of this.pendingCloses.entries()) {
+    for (const [procName, entry] of this.pendingCloses.entries()) {
       if (entry.timer) clearTimeout(entry.timer);
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        try {
+          this.mainWindow.webContents.send('app-close-warning-cancelled', procName);
+        } catch (e) { /* ignore */ }
+      }
     }
     this.pendingCloses.clear();
   }
@@ -42,19 +54,23 @@ export class AppBlocker {
   getBlockedProcessNames() {
     const categories = this.store.get('appCategories', {});
     const blocklist = this.store.get('blocklist', []);
+    let blocked = [];
 
     if (this.mode === 'Strict Lock') {
-      return Object.entries(categories)
+      blocked = Object.entries(categories)
         .filter(([_, cat]) => cat !== 'productive')
         .map(([name]) => name.toLowerCase());
     } else if (this.mode === 'Light Focus') {
-      return Object.entries(categories)
+      blocked = Object.entries(categories)
         .filter(([_, cat]) => cat === 'wasteful')
         .map(([name]) => name.toLowerCase());
     } else {
       // Deep Silence — use custom blocklist
-      return blocklist.map(b => b.toLowerCase());
+      blocked = blocklist.map(b => b.toLowerCase());
     }
+
+    // Always exclude protected system processes
+    return blocked.filter(b => !PROTECTED_PROCESSES.includes(b.toLowerCase()));
   }
 
   enforce() {
@@ -105,6 +121,7 @@ export class AppBlocker {
   }
 
   handleBlockedProcess(procName) {
+    if (PROTECTED_PROCESSES.includes(procName.toLowerCase())) return;
     if (this.pendingCloses.has(procName)) {
       // Already warned and timer is active
       return;
@@ -139,7 +156,7 @@ export class AppBlocker {
   }
 
   forceKillProcess(procName) {
-    if (!this.isActive) return;
+    if (!this.isActive || PROTECTED_PROCESSES.includes(procName.toLowerCase())) return;
 
     console.log(`[Blocker] Timer expired. Force killing: ${procName}`);
 

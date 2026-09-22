@@ -9,4 +9,5 @@ coverage/
 release/
 client_secret_*.json
 *.exe
+scratch/
 

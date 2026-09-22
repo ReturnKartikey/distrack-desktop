@@ -3,7 +3,7 @@ import path from 'path';
 import { exec, execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { Store } from './store.js';
-import { AppTracker } from './tracker.js';
+import { AppTracker, WINDOW_SCANNER_SCRIPT, SYSTEM_IGNORED_PROCS, getLocalDateKey } from './tracker.js';
 import { AppBlocker } from './blocker.js';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
@@ -89,8 +89,18 @@ const STORE_DEFAULTS = {
 
 // ── Window creation ───────────────────────────────────────────
 function createWindow() {
-  const iconPath = path.join(__dirname, '../src/assets/icon.png');
-  const winIcon = nativeImage.createFromPath(iconPath);
+  let iconPath = path.join(__dirname, '../src/assets/icon.png');
+  if (!fs.existsSync(iconPath)) {
+    iconPath = path.join(__dirname, '../dist/assets/icon.png');
+  }
+  if (!fs.existsSync(iconPath)) {
+    const distAssets = path.join(__dirname, '../dist/assets');
+    if (fs.existsSync(distAssets)) {
+      const iconFile = fs.readdirSync(distAssets).find(f => f.startsWith('icon-') && f.endsWith('.png'));
+      if (iconFile) iconPath = path.join(distAssets, iconFile);
+    }
+  }
+  const winIcon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : null;
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -104,7 +114,7 @@ function createWindow() {
     },
     backgroundColor: '#0A0A0A',
     show: false,
-    icon: winIcon,
+    icon: winIcon || undefined,
   });
 
   const startHidden = process.argv.includes('--hidden');
@@ -157,13 +167,14 @@ function createWindow() {
         console.log(`[Screenshot] Saved ${filename}`);
       };
 
+      const originalProfile = store.get('userProfile', { name: '', email: '' });
       try {
-        // Ensure user is logged in
+        // Ensure user is temporarily simulated if empty for screenshots
         await mainWindow.webContents.executeJavaScript(`
           if (window.setUserProfile) {
-            window.setUserProfile({ name: 'Kartikey', email: 'kartikey@gmail.com' });
+            window.setUserProfile({ name: 'Demo User', email: 'user@example.com' });
           } else {
-            localStorage.setItem('distrack_user', JSON.stringify({ name: 'Kartikey', email: 'kartikey@gmail.com' }));
+            localStorage.setItem('distrack_user', JSON.stringify({ name: 'Demo User', email: 'user@example.com' }));
           }
         `);
         await delay(2000); // Wait for state update
@@ -200,10 +211,14 @@ function createWindow() {
         fs.writeFileSync(path.join(screenshotDir, 'login.png'), loginImg.toPNG());
         console.log('[Screenshot] Saved login.png');
 
-        // Restore user
-        store.set('userProfile', { name: 'Kartikey', email: 'kartikey@gmail.com' });
+        // Restore original user
+        store.set('userProfile', originalProfile);
         await mainWindow.webContents.executeJavaScript(`
-          localStorage.setItem('distrack_user', JSON.stringify({ name: 'Kartikey', email: 'kartikey@gmail.com' }));
+          if (window.setUserProfile) {
+            window.setUserProfile(${JSON.stringify(originalProfile)});
+          } else {
+            localStorage.setItem('distrack_user', JSON.stringify(${JSON.stringify(originalProfile)}));
+          }
         `);
         
         console.log('[Screenshot] All screenshots captured successfully!');
@@ -260,7 +275,7 @@ function setupIPC() {
     cats[processName.toLowerCase()] = category;
     store.set('appCategories', cats);
     // Also update today's usage data category
-    const dateKey = new Date().toISOString().split('T')[0];
+    const dateKey = getLocalDateKey();
     const usage = store.get(`usageData.${dateKey}`, {});
     const key = processName.toLowerCase();
     if (usage[key]) { usage[key].category = category; store.set(`usageData.${dateKey}`, usage); }
@@ -270,17 +285,11 @@ function setupIPC() {
   // -- Scan running apps --
   ipcMain.handle('scan-running-apps', () => {
     return new Promise((resolve) => {
-      const psScript = `Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object ProcessName, MainWindowTitle, Id, Path | ConvertTo-Json -Compress`;
       execFile('powershell.exe', [
-        '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', psScript
+        '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', WINDOW_SCANNER_SCRIPT
       ], { windowsHide: true, timeout: 10000 }, async (err, stdout, stderr) => {
-        if (err) {
-          console.error('[Scan] PowerShell error:', err.message);
-          console.error('[Scan] stderr:', stderr);
-          return resolve([]);
-        }
-        if (!stdout || !stdout.trim()) {
-          console.log('[Scan] No output from PowerShell');
+        if (err || !stdout || !stdout.trim()) {
+          if (err) console.error('[Scan] PowerShell error:', err.message);
           return resolve([]);
         }
         try {
@@ -305,7 +314,7 @@ function setupIPC() {
             discord: 'wasteful', telegram: 'wasteful', whatsapp: 'wasteful',
           };
           const resultPromises = data
-            .filter(p => p && p.ProcessName && !['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker', 'nvidia share', 'nvspcaps64', 'nvcontainer', 'nvspcaps', 'nvidia web helper', 'powertoys.quickaccess', 'powertoys', 'powertoys.awake', 'powertoys.fancyzones', 'antigravity', 'conhost', 'wslhost', 'wsl'].includes(p.ProcessName.toLowerCase()))
+            .filter(p => p && p.ProcessName && !SYSTEM_IGNORED_PROCS.includes(p.ProcessName.toLowerCase()))
             .map(async (p) => {
               const key = p.ProcessName.toLowerCase();
               let iconDataUrl = null;
@@ -314,7 +323,7 @@ function setupIPC() {
                   const img = await app.getFileIcon(p.Path, { size: 'normal' });
                   iconDataUrl = img.toDataURL();
                 } catch (e) {
-                  // ignore
+                  // ignore icon resolution errors
                 }
               }
               return {
@@ -445,6 +454,14 @@ function setupIPC() {
       let port = 0;
       const server = http.createServer(async (req, res) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`);
+
+        // Ignore browser favicon requests without failing the auth session
+        if (urlObj.pathname === '/favicon.ico') {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+
         const code = urlObj.searchParams.get('code');
         const error = urlObj.searchParams.get('error');
 

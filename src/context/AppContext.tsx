@@ -98,6 +98,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { blocklistRef.current = blocklist; }, [blocklist]);
   useEffect(() => { focusSessionsRef.current = focusSessions; }, [focusSessions]);
 
+  // Helper to format local calendar date key (YYYY-MM-DD)
+  const getLocalDateKey = (d = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Safe helper to sync to cloud without disrupting local functionality if Firestore is disabled
+  const safeSyncToCloud = useCallback((data: any) => {
+    if (!isFirebaseConfigured || !auth.currentUser) return;
+    try {
+      setDoc(doc(db, 'users', auth.currentUser.uid), data, { merge: true }).catch((err) => {
+        console.warn('[Firebase] Cloud backup deferred (local-first mode active):', err.code || err.message);
+      });
+    } catch (e) {
+      // ignore synchronous errors
+    }
+  }, []);
+
   // ── Firebase Synchronization ──
   useEffect(() => {
     if (!isFirebaseConfigured) return;
@@ -152,51 +172,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }).catch(console.error);
         }
 
-        // Subscribe to Firestore document updates
-        const docRef = doc(db, 'users', firebaseUser.uid);
-        unsubDoc = onSnapshot(docRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
+        // Subscribe to Firestore document updates with graceful error handling
+        try {
+          const docRef = doc(db, 'users', firebaseUser.uid);
+          unsubDoc = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data();
 
-            // Sync settings
-            if (data.settings && JSON.stringify(data.settings) !== JSON.stringify(settingsRef.current)) {
-              setSettings(data.settings);
-              if (isElectron) window.electronAPI!.updateSettings(data.settings);
-            }
+              // Sync settings
+              if (data.settings && JSON.stringify(data.settings) !== JSON.stringify(settingsRef.current)) {
+                setSettings(data.settings);
+                if (isElectron) window.electronAPI!.updateSettings(data.settings);
+              }
 
-            // Sync blocklist
-            if (data.blocklist && JSON.stringify(data.blocklist) !== JSON.stringify(blocklistRef.current)) {
-              setBlocklist(data.blocklist);
-              if (isElectron) window.electronAPI!.setBlocklist(data.blocklist);
-            }
+              // Sync blocklist
+              if (data.blocklist && JSON.stringify(data.blocklist) !== JSON.stringify(blocklistRef.current)) {
+                setBlocklist(data.blocklist);
+                if (isElectron) window.electronAPI!.setBlocklist(data.blocklist);
+              }
 
-            // Sync focus sessions
-            if (data.focusSessions && JSON.stringify(data.focusSessions) !== JSON.stringify(focusSessionsRef.current)) {
-              setFocusSessions(data.focusSessions);
-              if (isElectron) window.electronAPI!.setFocusSessions(data.focusSessions);
-            }
+              // Sync focus sessions
+              if (data.focusSessions && JSON.stringify(data.focusSessions) !== JSON.stringify(focusSessionsRef.current)) {
+                setFocusSessions(data.focusSessions);
+                if (isElectron) window.electronAPI!.setFocusSessions(data.focusSessions);
+              }
 
-            // Sync app categories
-            if (data.appCategories && isElectron) {
-              window.electronAPI!.getAppCategories().then(currentCats => {
-                if (JSON.stringify(data.appCategories) !== JSON.stringify(currentCats)) {
-                  Object.entries(data.appCategories).forEach(([procName, cat]) => {
-                    window.electronAPI!.updateAppCategory(procName, cat as any);
-                  });
-                }
+              // Sync app categories
+              if (data.appCategories && isElectron) {
+                window.electronAPI!.getAppCategories().then(currentCats => {
+                  if (JSON.stringify(data.appCategories) !== JSON.stringify(currentCats)) {
+                    Object.entries(data.appCategories).forEach(([procName, cat]) => {
+                      window.electronAPI!.updateAppCategory(procName, cat as any);
+                    });
+                  }
+                });
+              }
+            } else {
+              console.log('[Firebase] Document not found. Initializing cloud backup...');
+              setDoc(docRef, {
+                settings: settingsRef.current,
+                blocklist: blocklistRef.current,
+                focusSessions: focusSessionsRef.current,
+              }, { merge: true }).catch((err) => {
+                console.warn('[Firebase] Initial cloud backup deferred:', err.code || err.message);
               });
             }
-          } else {
-            console.log('[Firebase] Document not found. Creating first-time cloud backup...');
-            setDoc(docRef, {
-              settings: settingsRef.current,
-              blocklist: blocklistRef.current,
-              focusSessions: focusSessionsRef.current,
-            }, { merge: true }).catch(console.error);
-          }
-        }, (err) => {
-          console.error('[Firebase] Firestore snapshot listener error:', err);
-        });
+          }, (err) => {
+            console.warn('[Firebase] Cloud sync stream unavailable (operating in local-first mode):', err.message);
+          });
+        } catch (err: any) {
+          console.warn('[Firebase] Firestore subscription error:', err.message);
+        }
       } else {
         setUserProfileState({ name: '', email: '', picture: '' });
         localStorage.removeItem('distrack_user');
@@ -228,9 +254,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const mockValues = [3.5, 4.2, 2.8, 5.1, 3.0, 1.1, 1.0];
       const totals: DailyTotal[] = [];
       for (let i = 0; i < 7; i++) {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
-        const dateKey = d.toISOString().split('T')[0];
+        const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+        const dateKey = getLocalDateKey(d);
         const val = mockValues[i];
         totals.push({
           day: days[i],
@@ -326,16 +351,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       window.electronAPI!.updateAppCategory(id, newCategory).then(() => {
         updateLocal();
         window.electronAPI!.getAppCategories().then(cats => {
-          const currentUser = auth.currentUser;
-          if (isFirebaseConfigured && currentUser) {
-            setDoc(doc(db, 'users', currentUser.uid), { appCategories: cats }, { merge: true }).catch(console.error);
-          }
+          safeSyncToCloud({ appCategories: cats });
         });
       });
     } else {
       updateLocal();
     }
-  }, []);
+  }, [safeSyncToCloud]);
 
   const startFocusSession = useCallback((config: { mode: string }, bypassBackend?: boolean) => {
     if (isElectron && !bypassBackend) {
@@ -355,22 +377,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (isElectron) {
       window.electronAPI!.toggleBlockApp(id).then(newBlocklist => {
         setBlocklist(newBlocklist);
-        const currentUser = auth.currentUser;
-        if (isFirebaseConfigured && currentUser) {
-          setDoc(doc(db, 'users', currentUser.uid), { blocklist: newBlocklist }, { merge: true }).catch(console.error);
-        }
+        safeSyncToCloud({ blocklist: newBlocklist });
       });
     } else {
       setBlocklist(prev => {
         const newBlocklist = prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id];
-        const currentUser = auth.currentUser;
-        if (isFirebaseConfigured && currentUser) {
-          setDoc(doc(db, 'users', currentUser.uid), { blocklist: newBlocklist }, { merge: true }).catch(console.error);
-        }
+        safeSyncToCloud({ blocklist: newBlocklist });
         return newBlocklist;
       });
     }
-  }, []);
+  }, [safeSyncToCloud]);
 
   const addFocusSession = useCallback((session: Omit<FocusSession, 'id'>) => {
     const newSession = { ...session, id: Date.now().toString() };
@@ -378,23 +394,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       window.electronAPI!.addFocusSession(session).then(() => {
         window.electronAPI!.getFocusSessions().then(sessions => {
           setFocusSessions(sessions);
-          const currentUser = auth.currentUser;
-          if (isFirebaseConfigured && currentUser) {
-            setDoc(doc(db, 'users', currentUser.uid), { focusSessions: sessions }, { merge: true }).catch(console.error);
-          }
+          safeSyncToCloud({ focusSessions: sessions });
         });
       });
     } else {
       setFocusSessions(prev => {
         const list = [newSession, ...prev];
-        const currentUser = auth.currentUser;
-        if (isFirebaseConfigured && currentUser) {
-          setDoc(doc(db, 'users', currentUser.uid), { focusSessions: list }, { merge: true }).catch(console.error);
-        }
+        safeSyncToCloud({ focusSessions: list });
         return list;
       });
     }
-  }, []);
+  }, [safeSyncToCloud]);
 
   const scanApps = useCallback(async (): Promise<AppUsage[]> => {
     if (isElectron) {
@@ -435,22 +445,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (isElectron) {
       window.electronAPI!.updateSettings(s).then(newSettings => {
         setSettings(newSettings);
-        const currentUser = auth.currentUser;
-        if (isFirebaseConfigured && currentUser) {
-          setDoc(doc(db, 'users', currentUser.uid), { settings: newSettings }, { merge: true }).catch(console.error);
-        }
+        safeSyncToCloud({ settings: newSettings });
       });
     } else {
       setSettings(prev => {
         const newSettings = { ...prev, ...s };
-        const currentUser = auth.currentUser;
-        if (isFirebaseConfigured && currentUser) {
-          setDoc(doc(db, 'users', currentUser.uid), { settings: newSettings }, { merge: true }).catch(console.error);
-        }
+        safeSyncToCloud({ settings: newSettings });
         return newSettings;
       });
     }
-  }, []);
+  }, [safeSyncToCloud]);
 
   const clearData = useCallback(() => {
     if (isElectron) {

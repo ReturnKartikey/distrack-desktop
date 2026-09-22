@@ -13,7 +13,8 @@ export default function Insights() {
   };
 
   const usageByCategory = apps.reduce((acc, app) => {
-    acc[app.category] += app.timeSpentMinutes;
+    const cat = (app.category && acc[app.category] !== undefined) ? app.category : 'neutral';
+    acc[cat] += (app.timeSpentMinutes || 0);
     return acc;
   }, { productive: 0, neutral: 0, wasteful: 0 });
 

@@ -1,10 +1,27 @@
-import { execFile, exec, spawn } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { app } from 'electron';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+export function getLocalDateKey(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export const SYSTEM_IGNORED_PROCS = [
+  'electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost',
+  'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost',
+  'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp',
+  'runtimebroker', 'nvidia share', 'nvspcaps64', 'nvcontainer', 'nvspcaps',
+  'nvidia web helper', 'powertoys.quickaccess', 'powertoys', 'powertoys.awake',
+  'powertoys.fancyzones', 'antigravity', 'conhost', 'wslhost', 'wsl', 'cmd',
+  'powershell', 'pwsh'
+];
 
 /** Default app category guesses based on common process names */
 const DEFAULT_CATEGORIES = {
@@ -35,20 +52,113 @@ const ICON_MAP = {
   terminal: 'terminal', windowsterminal: 'terminal', powershell: 'terminal', cmd: 'terminal',
 };
 
-// PowerShell script to get the foreground window info
+// PowerShell script to enumerate interactive desktop windows reliably
+export const WINDOW_SCANNER_SCRIPT = `
+Add-Type @'
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Runtime.InteropServices;
+using System.Diagnostics;
+
+public class WindowInfo {
+    public int Id { get; set; }
+    public string ProcessName { get; set; }
+    public string MainWindowTitle { get; set; }
+    public string Path { get; set; }
+}
+
+public class WindowScanner {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr OpenDesktop(string lpszDesktop, uint dwFlags, bool fInherit, uint dwDesiredAccess);
+
+    [DllImport("user32.dll")]
+    public static extern bool EnumDesktopWindows(IntPtr hDesktop, EnumWindowsProc lpfn, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern bool CloseDesktop(IntPtr hDesktop);
+
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    public static List<WindowInfo> GetActiveWindows() {
+        var list = new List<WindowInfo>();
+        var seenPids = new HashSet<int>();
+
+        IntPtr hDesk = OpenDesktop("Default", 0, false, 0x01FF);
+        if (hDesk == IntPtr.Zero) return list;
+
+        EnumDesktopWindows(hDesk, (hWnd, lParam) => {
+            if (IsWindowVisible(hWnd)) {
+                StringBuilder sb = new StringBuilder(512);
+                int len = GetWindowText(hWnd, sb, sb.Capacity);
+                if (len > 0) {
+                    uint pid = 0;
+                    GetWindowThreadProcessId(hWnd, out pid);
+                    int pInt = (int)pid;
+                    if (pInt > 0 && !seenPids.Contains(pInt)) {
+                        try {
+                            var proc = Process.GetProcessById(pInt);
+                            string path = "";
+                            try { path = proc.MainModule.FileName; } catch {}
+                            list.Add(new WindowInfo {
+                                Id = pInt,
+                                ProcessName = proc.ProcessName,
+                                MainWindowTitle = sb.ToString(),
+                                Path = path
+                            });
+                            seenPids.Add(pInt);
+                        } catch {}
+                    }
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        CloseDesktop(hDesk);
+        return list;
+    }
+}
+'@
+
+$windows = [WindowScanner]::GetActiveWindows()
+$windows | ConvertTo-Json -Compress
+`;
+
+// PowerShell script to monitor foreground window in real-time
 const PS_SCRIPT = `
 Add-Type -MemberDefinition '
 [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+[DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 ' -Name 'U' -Namespace 'W' -ErrorAction SilentlyContinue
 
 while($true) {
   $h=[W.U]::GetForegroundWindow()
-  $p=[uint32]0
-  [W.U]::GetWindowThreadProcessId($h,[ref]$p)|Out-Null
-  $pr=Get-Process -Id $p -ErrorAction SilentlyContinue
-  if($pr){@{n=$pr.ProcessName;t=$pr.MainWindowTitle;p=[int]$p;path=$pr.Path}|ConvertTo-Json -Compress}
-  Start-Sleep -Seconds 3
+  if ($h -ne [IntPtr]::Zero) {
+    $p=[uint32]0
+    [W.U]::GetWindowThreadProcessId($h,[ref]$p)|Out-Null
+    if ($p -gt 0) {
+      $pr=Get-Process -Id $p -ErrorAction SilentlyContinue
+      if ($pr) {
+        $sb=New-Object System.Text.StringBuilder 512
+        [W.U]::GetWindowText($h, $sb, $sb.Capacity)|Out-Null
+        $t=$sb.ToString()
+        $path=""
+        try { $path=$pr.Path } catch {}
+        @{n=$pr.ProcessName;t=$t;p=[int]$p;path=$path}|ConvertTo-Json -Compress
+      }
+    }
+  }
+  Start-Sleep -Seconds 2
 }
 `;
 
@@ -95,14 +205,15 @@ export class AppTracker {
 
   /** Scan ALL running processes with visible windows and seed them into today's usage data */
   initialScan() {
-    const dateKey = new Date().toISOString().split('T')[0];
+    const dateKey = getLocalDateKey();
     const usageData = this.store.get(`usageData.${dateKey}`, {});
 
-    exec(
-      'powershell -NoProfile -Command "Get-Process | Where-Object {$_.MainWindowTitle -ne \'\'} | Select-Object ProcessName, MainWindowTitle, Id, Path | ConvertTo-Json -Compress"',
-      { windowsHide: true, timeout: 8000 },
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NoLogo', '-NonInteractive', '-Command', WINDOW_SCANNER_SCRIPT],
+      { windowsHide: true, timeout: 10000 },
       async (err, stdout) => {
-        if (err || !stdout.trim()) {
+        if (err || !stdout || !stdout.trim()) {
           this.hasInitialScan = true;
           return;
         }
@@ -114,11 +225,11 @@ export class AppTracker {
           let changed = false;
 
           const promises = data.map(async (proc) => {
-            if (!proc.ProcessName) return;
+            if (!proc || !proc.ProcessName) return;
             const appKey = proc.ProcessName.toLowerCase();
 
-            // Skip ourselves and system processes
-            if (['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker', 'nvidia share', 'nvspcaps64', 'nvcontainer', 'nvspcaps', 'nvidia web helper', 'powertoys.quickaccess', 'powertoys', 'powertoys.awake', 'powertoys.fancyzones', 'antigravity', 'conhost', 'wslhost', 'wsl'].includes(appKey)) return;
+            // Skip system processes
+            if (SYSTEM_IGNORED_PROCS.includes(appKey)) return;
 
             if (!usageData[appKey] || !usageData[appKey].icon || !usageData[appKey].icon.startsWith('data:')) {
               let iconDataUrl = null;
@@ -127,7 +238,7 @@ export class AppTracker {
                   const img = await app.getFileIcon(proc.Path, { size: 'normal' });
                   iconDataUrl = img.toDataURL();
                 } catch (e) {
-                  // ignore
+                  // ignore icon resolution errors
                 }
               }
               if (!usageData[appKey]) {
@@ -167,25 +278,24 @@ export class AppTracker {
           console.log(`[Tracker] Initial scan: found ${Object.keys(usageData).length} apps`);
         } catch (e) {
           console.error('[Tracker] Initial scan parse error:', e.message);
+          this.hasInitialScan = true;
         }
       }
     );
   }
 
-  // Replaced poll() with persistent psProcess.
-
   async recordActivity(processName, windowTitle, exePath) {
     const now = Date.now();
-    const elapsed = this.lastPollTime ? Math.round((now - this.lastPollTime) / 1000) : 3;
+    const elapsed = this.lastPollTime ? Math.round((now - this.lastPollTime) / 1000) : 2;
     this.lastPollTime = now;
 
     // Cap at 30s to avoid huge jumps from sleep/suspend
     const seconds = Math.min(elapsed, 30);
-    const dateKey = new Date().toISOString().split('T')[0];
+    const dateKey = getLocalDateKey();
     const appKey = processName.toLowerCase();
 
-    // Skip tracking ourselves and system processes
-    if (['electron', 'distrack', 'systemsettings', 'textinputhost', 'applicationframehost', 'shellexperiencehost', 'awcc', 'explorer', 'searchapp', 'startmenuexperiencehost', 'widgets', 'ctfmon', 'searchhost', 'taskmgr', 'dwm', 'svchost', 'lockapp', 'runtimebroker', 'nvidia share', 'nvspcaps64', 'nvcontainer', 'nvspcaps', 'nvidia web helper', 'powertoys.quickaccess', 'powertoys', 'powertoys.awake', 'powertoys.fancyzones', 'antigravity', 'conhost', 'wslhost', 'wsl'].includes(appKey)) return;
+    // Skip tracking system processes
+    if (SYSTEM_IGNORED_PROCS.includes(appKey)) return;
 
     const usageData = this.store.get(`usageData.${dateKey}`, {});
 
@@ -201,7 +311,7 @@ export class AppTracker {
       }
       usageData[appKey] = {
         processName,
-        windowTitle,
+        windowTitle: windowTitle || processName,
         totalSeconds: 0,
         category: this.getCategory(appKey),
         lastActive: now,
@@ -210,7 +320,9 @@ export class AppTracker {
     }
 
     usageData[appKey].totalSeconds += seconds;
-    usageData[appKey].windowTitle = windowTitle;
+    if (windowTitle && windowTitle.trim()) {
+      usageData[appKey].windowTitle = windowTitle.trim();
+    }
     usageData[appKey].lastActive = now;
 
     this.store.set(`usageData.${dateKey}`, usageData);
@@ -248,15 +360,16 @@ export class AppTracker {
   }
 
   getTodayApps() {
-    const dateKey = new Date().toISOString().split('T')[0];
+    const dateKey = getLocalDateKey();
     return this.formatApps(this.store.get(`usageData.${dateKey}`, {}));
   }
 
   getWeekApps() {
     const merged = {};
     for (let i = 0; i < 7; i++) {
-      const d = new Date(); d.setDate(d.getDate() - i);
-      const dayData = this.store.get(`usageData.${d.toISOString().split('T')[0]}`, {});
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dayData = this.store.get(`usageData.${getLocalDateKey(d)}`, {});
       for (const [key, data] of Object.entries(dayData)) {
         if (!merged[key]) merged[key] = { ...data, totalSeconds: 0 };
         merged[key].totalSeconds += data.totalSeconds;
@@ -275,9 +388,8 @@ export class AppTracker {
     const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
     const totals = [];
     for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      const dateKey = d.toISOString().split('T')[0];
+      const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+      const dateKey = getLocalDateKey(d);
       const dayData = this.store.get(`usageData.${dateKey}`, {});
       const totalHours = Object.values(dayData).reduce((s, a) => s + (a.totalSeconds || 0), 0) / 3600;
       totals.push({

@@ -58,12 +58,22 @@ export default function FocusMode() {
         setTimeLeft((prev) => prev - 1);
       }, 1000);
     } else if (timeLeft === 0 && isFocusModeActive) {
+      const mins = Math.max(1, Math.round(initialDuration / 60));
       // Record completed session
       addFocusSession({
-        durationMinutes: Math.round(initialDuration / 60),
+        durationMinutes: mins,
         date: new Date().toISOString(),
         mode: timerMode === 'pomodoro' ? `Pomodoro (${pomodoroState})` : selectedMode
       });
+
+      // Show notification if supported
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Distrack — Focus Session Completed', {
+          body: timerMode === 'pomodoro' && pomodoroState === 'work'
+            ? 'Great focus! Take a well-deserved break.'
+            : `Completed ${mins} minute${mins > 1 ? 's' : ''} of deep work.`,
+        });
+      }
 
       if (timerMode === 'pomodoro') {
         if (pomodoroState === 'work') {

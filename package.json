@@ -13,7 +13,8 @@
     "clean": "npx rimraf dist release",
     "lint": "tsc --noEmit",
     "desktop": "concurrently \"npm run dev\" \"npx wait-on tcp:3000 && electron . --dev\"",
-    "desktop:build": "npm run build && npx electron-builder"
+    "desktop:build": "npm run build && npx electron-builder",
+    "reset:auth": "node electron/reset_auth.js"
   },
   "build": {
     "appId": "com.distrack.digitalmindfulness",
