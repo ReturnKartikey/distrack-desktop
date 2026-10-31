@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { AppUsage, AppCategory, initialApps } from '../data/mockData';
-import { calculateFocusScore } from '../utils/logic';
+import { calculateFocusScore, getLocalDateKey } from '../utils/logic';
 import type { FocusSession, AppSettings, DailyTotal } from '../types/electron';
 import { auth, db, isFirebaseConfigured } from '../utils/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -73,14 +73,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setUserProfile = useCallback((p: UserProfile) => {
     setUserProfileState(p);
-    localStorage.setItem('distrack_user', JSON.stringify(p));
+    if (!p.name) {
+      localStorage.removeItem('distrack_user');
+    } else {
+      localStorage.setItem('distrack_user', JSON.stringify(p));
+    }
     if (isElectron) {
       window.electronAPI!.setUserProfile(p);
     }
     if (!p.name && isFirebaseConfigured) {
       auth.signOut().catch(console.error);
     }
-  }, []);
+  }, [isElectron]);
 
   useEffect(() => {
     (window as any).setUserProfile = setUserProfile;
@@ -97,14 +101,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { blocklistRef.current = blocklist; }, [blocklist]);
   useEffect(() => { focusSessionsRef.current = focusSessions; }, [focusSessions]);
-
-  // Helper to format local calendar date key (YYYY-MM-DD)
-  const getLocalDateKey = (d = new Date()) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
 
   // Safe helper to sync to cloud without disrupting local functionality if Firestore is disabled
   const safeSyncToCloud = useCallback((data: any) => {
@@ -287,7 +283,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       api.getFocusActive(),
       api.getUserProfile(),
     ]).then(([trackedApps, bl, sessions, sett, totals, onboarded, focusActive, profile]) => {
-      if (trackedApps.length > 0) {
+      if (trackedApps) {
         setApps(trackedApps);
         setFocusScore(calculateFocusScore(trackedApps));
       }
@@ -304,12 +300,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const unsub = api.onTrackingUpdate((data) => {
       if (timeframeRef.current === 'weekly') {
         api.getTrackedApps('weekly').then((trackedApps) => {
-          setApps(trackedApps);
-          setFocusScore(calculateFocusScore(trackedApps));
+          setApps(trackedApps || []);
+          setFocusScore(calculateFocusScore(trackedApps || []));
         });
       } else {
-        setApps(data.apps);
-        setFocusScore(calculateFocusScore(data.apps));
+        setApps(data.apps || []);
+        setFocusScore(calculateFocusScore(data.apps || []));
       }
     });
     cleanupRef.current = unsub;
@@ -327,15 +323,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Refresh data when timeframe changes
   useEffect(() => {
-    if (!isElectron) return;
+    if (!isElectron) {
+      setApps(initialApps.map(a => ({
+        ...a,
+        timeSpentMinutes: timeframe === 'weekly' ? a.timeSpentMinutes * 5 : a.timeSpentMinutes
+      })));
+      return;
+    }
     window.electronAPI!.getTrackedApps(timeframe).then((trackedApps) => {
-      if (trackedApps.length > 0) {
-        setApps(trackedApps);
-        setFocusScore(calculateFocusScore(trackedApps));
-      }
+      setApps(trackedApps || []);
+      setFocusScore(calculateFocusScore(trackedApps || []));
     });
     window.electronAPI!.getDailyTotals().then(setDailyTotals);
-  }, [timeframe]);
+  }, [timeframe, isElectron]);
 
   // ── Recalculate score when apps change ──
   useEffect(() => {

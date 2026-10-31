@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { Notification } from 'electron';
 
-const PROTECTED_PROCESSES = [
+export const PROTECTED_PROCESSES = [
   'electron', 'distrack', 'explorer', 'taskmgr', 'dwm', 'svchost',
   'powershell', 'pwsh', 'cmd', 'conhost', 'antigravity', 'systemsettings',
   'applicationframehost', 'shellexperiencehost', 'startmenuexperiencehost',

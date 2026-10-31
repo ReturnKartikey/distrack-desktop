@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 
 const quotes = [
@@ -155,7 +155,22 @@ export default function FocusMode() {
     else if (e.key === 'Escape') setIsEditingTime(false);
   };
 
-  const blockCandidates = apps.filter(app => app.category !== 'productive');
+  const displayedCandidates = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; icon?: string; category?: string }>();
+    // Show existing blocked apps so they don't disappear if not currently active
+    for (const id of blocklist) {
+      map.set(id, { id, name: id.charAt(0).toUpperCase() + id.slice(1) });
+    }
+    // Add customItems added in this session
+    for (const item of customItems) {
+      map.set(item.id, item);
+    }
+    // Add non-productive tracked apps
+    for (const app of apps.filter(a => a.category !== 'productive')) {
+      map.set(app.id, app);
+    }
+    return Array.from(map.values());
+  }, [blocklist, customItems, apps]);
 
   const addCustomItem = () => {
     if (customInput.trim()) {
@@ -411,7 +426,7 @@ export default function FocusMode() {
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-0.5 pr-2 custom-scrollbar border-t border-outline-variant pt-2 mt-2">
-            {[...customItems, ...blockCandidates].map(app => {
+            {displayedCandidates.map(app => {
               const appIcon = 'icon' in app ? (app as any).icon : 'public';
 
               let isBlocked = blocklist.includes(app.id);

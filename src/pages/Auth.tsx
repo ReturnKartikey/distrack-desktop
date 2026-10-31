@@ -376,6 +376,24 @@ export default function Auth() {
             >
               Back to Sign Up
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const profile = {
+                  name: signupData.name || signupData.email.split('@')[0] || 'User',
+                  email: signupData.email,
+                  picture: '',
+                  emailVerified: true,
+                };
+                setUserProfile(profile);
+                navigate('/');
+              }}
+              className="text-xs text-primary/80 hover:text-primary transition-colors uppercase tracking-wider font-bold text-[10px] flex items-center justify-center gap-1.5 pt-2"
+            >
+              <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+              Continue to App (Verify Later)
+            </button>
           </div>
         </div>
         
@@ -534,6 +552,20 @@ export default function Auth() {
               {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
             </button>
           )}
+
+          <div className="pt-4 border-t border-outline-variant/40 flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => {
+                setUserProfile({ name: 'Guest User', email: '', emailVerified: true });
+                navigate('/');
+              }}
+              className="text-[10px] font-mono uppercase tracking-[0.15em] text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1.5 py-1"
+            >
+              <span className="material-symbols-outlined text-[14px]">offline_bolt</span>
+              Continue as Guest (Offline Mode)
+            </button>
+          </div>
         </div>
       </div>
       

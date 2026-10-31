@@ -245,7 +245,7 @@ export class AppTracker {
                 usageData[appKey] = {
                   processName: proc.ProcessName,
                   windowTitle: proc.MainWindowTitle || proc.ProcessName,
-                  totalSeconds: 1, // Seed with 1 second so it shows up
+                  totalSeconds: 0, // Initialized to 0 so un-focused background apps don't generate phantom screen time
                   category: this.getCategory(appKey),
                   lastActive: now,
                   icon: iconDataUrl,

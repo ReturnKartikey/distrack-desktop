@@ -4,7 +4,7 @@ import { exec, execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { Store } from './store.js';
 import { AppTracker, WINDOW_SCANNER_SCRIPT, SYSTEM_IGNORED_PROCS, getLocalDateKey } from './tracker.js';
-import { AppBlocker } from './blocker.js';
+import { AppBlocker, PROTECTED_PROCESSES } from './blocker.js';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 import fs from 'fs';
@@ -432,9 +432,14 @@ function setupIPC() {
   // -- Kill process --
   ipcMain.handle('kill-process', (_, processName) => {
     return new Promise((resolve) => {
-      execFile('taskkill.exe', ['/IM', `${processName}.exe`, '/F'], { windowsHide: true }, (err) => {
+      const cleanName = (processName || '').toLowerCase().replace(/\.exe$/i, '');
+      if (PROTECTED_PROCESSES.includes(cleanName)) {
+        console.warn(`[Main] Refusing to kill protected process: ${cleanName}`);
+        return resolve(false);
+      }
+      execFile('taskkill.exe', ['/IM', `${cleanName}.exe`, '/F'], { windowsHide: true }, (err) => {
         if (err) {
-          console.error(`[Main] Failed to kill ${processName}:`, err.message);
+          console.error(`[Main] Failed to kill ${cleanName}:`, err.message);
         }
         resolve(!err);
       });

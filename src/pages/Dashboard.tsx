@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { getTopDistractions, formatTime } from '../utils/logic';
+import { getTopDistractions, formatTime, getLocalDateKey } from '../utils/logic';
 import { ResponsiveContainer, BarChart, Bar, XAxis, Tooltip as RechartsTooltip, Cell } from 'recharts';
 
 export default function Dashboard() {
@@ -28,20 +28,19 @@ export default function Dashboard() {
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
     monday.setDate(diff);
     for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
+      const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
       mockTotals.push({
         day: days[i],
         label: days[i],
         value: 0,
-        date: d.toISOString().split('T')[0]
+        date: getLocalDateKey(d)
       });
     }
     return mockTotals;
   }, [dailyTotals]);
 
   const todayIdx = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateKey();
     const idx = chartData.findIndex(d => d.date === todayStr);
     return idx >= 0 ? idx : chartData.length - 1;
   }, [chartData]);
